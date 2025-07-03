@@ -51,12 +51,22 @@
       unitSelect.add(opt);
     });
 
-    // NAVBAR logic
-    document.getElementById('nav_dashboard').onclick = ()=>{window.location='index.html';};
-    document.getElementById('nav_home').onclick = (e)=>{
-      e.preventDefault();
-      alert('Welcome to PALwifi! Use Dashboard or Map.');
-    };
+    // NAVBAR logic (active tab highlight)
+    function setActiveNav(tab) {
+      document.querySelectorAll('#navbar a').forEach(a=>a.classList.remove('active'));
+      if(tab==="dashboard"){
+        window.location = "index.html";
+      } else if(tab==="map") {
+        // nothing, already here
+        document.getElementById('nav_map').classList.add('active');
+      } else {
+        alert('Welcome to PALwifi! Use Dashboard or Map.');
+      }
+    }
+    document.getElementById('nav_dashboard').onclick = function(e){e.preventDefault();setActiveNav("dashboard");};
+    document.getElementById('nav_map').onclick = function(e){e.preventDefault();setActiveNav("map");};
+    document.getElementById('nav_home').onclick = function(e){e.preventDefault();setActiveNav("home");};
+    setActiveNav("map");
 
     // Initialize map
     let map = L.map('map').setView([49.9, -119.5], 10); // Default to Kelowna area
@@ -74,11 +84,9 @@
         .then(points => {
           let count = 0;
           points.forEach(p => {
-            // Make sure coordinates are numbers and present
             let lat = parseFloat(p.Latitude || p.lat);
             let lon = parseFloat(p.Longitude || p.lon || p.lng);
             if (!isNaN(lat) && !isNaN(lon)) {
-              // Color: green if wifi & int == 1, else red
               let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
               let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
               let color = (wifi && inet) ? "green" : "red";
