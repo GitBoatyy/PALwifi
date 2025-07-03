@@ -80,29 +80,26 @@
   </div>
   <script>
     // Units (update if you add/remove)
+    const units = [
+      'Palantir',
+      'Palantir2',
+      'Palantir3',
+      'Palantir4',
+      'Palantir5',
+      'Palantir6',
+      'Palantir7'
+    ];
     const unitSelect = document.getElementById('unitSelect');
-    fetch('data/')
-        .then(response => response.text())
-        .then(text => {
-    // Parse HTML directory listing for .csv files (works on most static hosts/GitHub Pages)
-        let re = /href="([^"]+_parsed\.csv)"/g;
-        let match;
-        let units = [];
-        while ((match = re.exec(text)) !== null) {
-            let name = match[1].replace('_parsed.csv', '');
-            units.push(name);
-        }
-        units = [...new Set(units)].sort(); // de-duplicate & sort
-        unitSelect.innerHTML = '';
-        units.forEach(u => {
-          let opt = document.createElement('option');
-          opt.value = u; opt.text = u;
-          unitSelect.add(opt);
-        });
-    // Load first unit
-        loadAndPlot(units[0]);
-        unitSelect.addEventListener('change', reloadCharts);
+    unitSelect.innerHTML = '';
+    units.forEach(u => {
+      let opt = document.createElement('option');
+      opt.value = u; opt.text = u;
+      unitSelect.add(opt);
     });
+    // Load first unit
+    loadAndPlot(units[0]);
+    unitSelect.addEventListener('change', reloadCharts);
+
     // Window select
     const windowSelect = document.getElementById('windowSelect');
     let dataWindow = 'hour'; // default
