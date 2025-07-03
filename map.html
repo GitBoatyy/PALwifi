@@ -1,97 +1,118 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>PALwifi Fleet Wi-Fi Logger Map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <meta charset="utf-8">
+  <title>PALwifi Map View</title>
+  <link rel="stylesheet" href="css/leaflet.css"/>
+  <script src="js/leaflet.js"></script>
   <style>
-    body { margin: 0; }
-    #map { width: 100vw; height: 100vh; }
-    #selector { position: absolute; top: 12px; left: 12px; z-index: 999; background: #fff; padding: 6px; border-radius: 6px; }
+    body { margin:0; background: #fafbfc; }
+    #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
+    #navbar a {
+      color: #fff; text-decoration: none; margin-right: 18px; font-weight: 600; font-size: 1.1em; padding: 6px 12px;
+      border-radius: 6px; transition: background 0.2s;
+    }
+    #navbar a:hover, #navbar a.active { background: #2362a1; }
+    #container { max-width: 1080px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
+    h1 { font-weight: 700; }
+    #map { width: 100%; height: 600px; border-radius: 12px; border: 1px solid #ddd; margin: 0 auto;}
+    #unitSelect { margin-bottom: 18px; font-size: 1.05em; padding: 4px 12px;}
   </style>
 </head>
 <body>
-  <div id="selector">
-    <label for="unitSelect">Select Unit:</label>
-    <select id="unitSelect"></select>
-    <label for="filter">Filter:</label>
-    <select id="filter">
-      <option value="wifi">Wi-Fi Connectivity</option>
-      <option value="internet">Internet (on ground)</option>
-    </select>
+  <nav id="navbar">
+    <a href="index.html" id="nav_dashboard">Dashboard</a>
+    <a href="map.html" class="active" id="nav_map">Map</a>
+    <a href="#" id="nav_home">Home</a>
+  </nav>
+  <div id="container">
+    <h1>PALwifi Logger Map</h1>
+    <div>
+      <label for="unitSelect">Select Unit:</label>
+      <select id="unitSelect"></select>
+    </div>
+    <div id="map"></div>
   </div>
-  <div id="map"></div>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // List your units (adjust if more units added)
+    // HARDCODED units
     const units = [
-      'Palantir', 'Palantir2', 'Palantir3', 'Palantir4', 'Palantir5', 'Palantir6', 'Palantir7'
+      'Palantir',
+      'Palantir2',
+      'Palantir3',
+      'Palantir4',
+      'Palantir5',
+      'Palantir6',
+      'Palantir7'
     ];
     const unitSelect = document.getElementById('unitSelect');
     units.forEach(u => {
       let opt = document.createElement('option');
-      opt.value = u;
-      opt.text = u;
+      opt.value = u; opt.text = u;
       unitSelect.add(opt);
     });
 
-    // Add filter options
-    const filterSelect = document.getElementById('filter');
+    // NAVBAR logic
+    document.getElementById('nav_dashboard').onclick = ()=>{window.location='index.html';};
+    document.getElementById('nav_home').onclick = (e)=>{
+      e.preventDefault();
+      alert('Welcome to PALwifi! Use Dashboard or Map.');
+    };
 
-    let map = L.map('map').setView([55, -100], 4);
+    // Initialize map
+    let map = L.map('map').setView([49.9, -119.5], 10); // Default to Kelowna area
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    let markers = [];
+    let markersLayer = L.layerGroup().addTo(map);
 
-    function plotUnit(unit, filter) {
-      // Remove old markers
-      markers.forEach(m => map.removeLayer(m));
-      markers = [];
+    function loadAndPlot(unit) {
+      markersLayer.clearLayers();
       fetch(`data/${unit}_map.json`)
-        .then(r => r.json())
-        .then(rows => {
-          let first = rows.find(row => row.Latitude && row.Longitude);
-          if (first) map.setView([first.Latitude, first.Longitude], 8);
-
-          rows.forEach(row => {
-            if (!row.Latitude || !row.Longitude) return;
-
-            let color = 'gray';
-            if (filter === 'wifi') {
-              color = (row.Wifi == 1) ? 'green' : 'red';
-            } else if (filter === 'internet') {
-              color = (row.Discrete2 == 1 && row.Int == 1) ? 'green'
-                   : (row.Discrete2 == 1 && row.Int == 0) ? 'red'
-                   : 'gray';
+        .then(resp => resp.json())
+        .then(points => {
+          let count = 0;
+          points.forEach(p => {
+            // Make sure coordinates are numbers and present
+            let lat = parseFloat(p.Latitude || p.lat);
+            let lon = parseFloat(p.Longitude || p.lon || p.lng);
+            if (!isNaN(lat) && !isNaN(lon)) {
+              // Color: green if wifi & int == 1, else red
+              let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
+              let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
+              let color = (wifi && inet) ? "green" : "red";
+              let marker = L.circleMarker([lat, lon], {
+                radius: 6,
+                fillColor: color,
+                color: "#111",
+                weight: 1,
+                fillOpacity: 0.8
+              }).addTo(markersLayer);
+              let popup = `
+                <b>${unit}</b><br>
+                Time: ${p.Date || ''} ${p.Time || ''}<br>
+                SSID: ${p.SSID || ''}<br>
+                Wifi: ${wifi ? "Yes" : "No"}<br>
+                Internet: ${inet ? "Yes" : "No"}<br>
+                Lat: ${lat}<br>
+                Lon: ${lon}
+              `;
+              marker.bindPopup(popup);
+              count++;
             }
-
-            let marker = L.circleMarker([row.Latitude, row.Longitude], {
-              color: color, radius: 6, fillOpacity: 0.8
-            }).addTo(map);
-            marker.bindPopup(`
-              <b>${unit}</b><br>
-              Date: ${row.Date || ''} ${row.Time || ''}<br>
-              SSID: ${row.SSID || ''}<br>
-              WiFi: ${row.Wifi || ''} | Internet: ${row.Int || ''}<br>
-              Discrete2 (on ground): ${row.Discrete2 || ''}<br>
-              Lat: ${row.Latitude}, Lon: ${row.Longitude}
-            `);
-            markers.push(marker);
           });
+          if (count > 0) {
+            // Center map on first valid point
+            let first = points.find(p => !isNaN(parseFloat(p.Latitude)) && !isNaN(parseFloat(p.Longitude)));
+            if(first) map.setView([parseFloat(first.Latitude), parseFloat(first.Longitude)], 11);
+          }
         });
     }
 
-    // Initial plot
-    plotUnit(unitSelect.value, filterSelect.value);
-
-    unitSelect.addEventListener('change', () => {
-      plotUnit(unitSelect.value, filterSelect.value);
-    });
-    filterSelect.addEventListener('change', () => {
-      plotUnit(unitSelect.value, filterSelect.value);
-    });
+    // Initial load
+    loadAndPlot(units[0]);
+    unitSelect.addEventListener('change', ()=> loadAndPlot(unitSelect.value));
   </script>
 </body>
 </html>
