@@ -2,52 +2,119 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>PALwifi Logger Analytics</title>
+  <title>PALwifi Logger Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body { font-family: sans-serif; margin: 0; background: #fafbfc;}
-    #container { max-width: 900px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
+    #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
+    #navbar a {
+      color: #fff; text-decoration: none; margin-right: 18px; font-weight: 600; font-size: 1.1em; padding: 6px 12px;
+      border-radius: 6px; transition: background 0.2s;
+    }
+    #navbar a:hover, #navbar a.active { background: #2362a1; }
+    #container { max-width: 980px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
     h1 { font-weight: 700; }
     .row { display: flex; align-items: center; margin-bottom: 1em; }
     .row label { margin-right: 8px; }
-    #linkmap { margin-left: auto; }
-    canvas { margin-bottom: 32px; }
+    #filterrow { margin-bottom: 12px; }
+    #recentlabel { margin-left: 18px; }
+    canvas { margin-bottom: 36px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 24px;}
     th, td { padding: 4px 8px; border: 1px solid #eee; }
     th { background: #f0f2f4;}
+    #welcome { display: none; }
+    #dashboard { display: block; }
   </style>
 </head>
 <body>
+  <nav id="navbar">
+    <a href="#" class="active" id="nav_dashboard">Dashboard</a>
+    <a href="map.html" id="nav_map" target="_blank">Map</a>
+    <a href="#" id="nav_home">Home</a>
+  </nav>
   <div id="container">
-    <h1>PALwifi Logger Analytics</h1>
-    <div class="row">
-      <label for="unitSelect">Select Unit:</label>
-      <select id="unitSelect"></select>
-      <a href="map.html" id="linkmap">View Map &raquo;</a>
+    <!-- Home Section -->
+    <div id="welcome">
+      <h1>Welcome to the PALwifi Analytics Dashboard</h1>
+      <p>This dashboard summarizes Wi-Fi and internet connectivity from your deployed Pi loggers.  
+        Use the navigation above to view charts, explore data by unit, or see visualizations on the map.</p>
+      <ul>
+        <li>Dashboard: Connectivity charts and tables per unit</li>
+        <li>Map: Plot all log points with connectivity colorization</li>
+        <li>All data is refreshed hourly from the remote units</li>
+      </ul>
     </div>
-    <canvas id="wifiChart"></canvas>
-    <canvas id="internetChart"></canvas>
-    <div>
-      <h3>Recent Data (last 20 samples)</h3>
-      <table id="datatable"></table>
+    <!-- Dashboard Section -->
+    <div id="dashboard">
+      <h1>PALwifi Logger Dashboard</h1>
+      <div class="row" id="filterrow">
+        <label for="unitSelect">Select Unit:</label>
+        <select id="unitSelect"></select>
+        <span id="recentlabel">
+          View:
+          <select id="windowSelect">
+            <option value="hour">Last 1 Hour</option>
+            <option value="day">Last 1 Day</option>
+            <option value="week">Last 1 Week</option>
+            <option value="all">All Data</option>
+          </select>
+        </span>
+        <span style="margin-left:auto"><a href="map.html" target="_blank">&raquo; Go to Map</a></span>
+      </div>
+      <canvas id="wifiChart"></canvas>
+      <canvas id="internetChart"></canvas>
+      <div style="display:flex; gap:32px;">
+        <div style="flex:1">
+          <canvas id="uptimeWifiChart"></canvas>
+        </div>
+        <div style="flex:1">
+          <canvas id="uptimeIntChart"></canvas>
+        </div>
+      </div>
+      <canvas id="reconnectsChart"></canvas>
+      <div>
+        <h3>Recent Data (<span id="tblwindow"></span>)</h3>
+        <table id="datatable"></table>
+      </div>
     </div>
   </div>
   <script>
-    const units = [
-      'Palantir', 'Palantir2', 'Palantir3', 'Palantir4', 'Palantir5', 'Palantir6'
-    ];
+    // Units (update if you add/remove)
+    const units = ['Palantir', 'Palantir2', 'Palantir3', 'Palantir4', 'Palantir5', 'Palantir6'];
     const unitSelect = document.getElementById('unitSelect');
     units.forEach(u => {
       let opt = document.createElement('option');
-      opt.value = u;
-      opt.text = u;
+      opt.value = u; opt.text = u;
       unitSelect.add(opt);
     });
+    // Window select
+    const windowSelect = document.getElementById('windowSelect');
+    let dataWindow = 'hour'; // default
+
+    // Navigation logic
+    function setActiveNav(tab) {
+      document.querySelectorAll('#navbar a').forEach(a=>a.classList.remove('active'));
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('welcome').style.display = 'none';
+      if(tab==="dashboard"){
+        document.getElementById('dashboard').style.display = 'block';
+        document.getElementById('nav_dashboard').classList.add('active');
+      }else{
+        document.getElementById('welcome').style.display = 'block';
+        document.getElementById('nav_home').classList.add('active');
+      }
+    }
+    document.getElementById('nav_dashboard').onclick = (e)=>{e.preventDefault();setActiveNav("dashboard");};
+    document.getElementById('nav_home').onclick = (e)=>{e.preventDefault();setActiveNav("home");};
+    setActiveNav("dashboard");
 
     // Chart objects
-    let wifiChart, internetChart;
+    let wifiChart, internetChart, uptimeWifiChart, uptimeIntChart, reconnectsChart;
     let wifiChartCtx = document.getElementById('wifiChart').getContext('2d');
     let internetChartCtx = document.getElementById('internetChart').getContext('2d');
+    let uptimeWifiCtx = document.getElementById('uptimeWifiChart').getContext('2d');
+    let uptimeIntCtx = document.getElementById('uptimeIntChart').getContext('2d');
+    let reconnectsChartCtx = document.getElementById('reconnectsChart').getContext('2d');
 
     function loadAndPlot(unit) {
       fetch(`data/${unit}_parsed.csv`)
@@ -63,14 +130,37 @@
             return o;
           }).filter(o => o['Date'] && o['Time']); // filter blank lines
 
-          // Extract fields for charting
-          let labels = data.map(o => `${o['Date']} ${o['Time']}`);
-          let wifiVals = data.map(o => Number(o['Wifi'] || o['WIFI'] || 0));
-          let intVals = data.map(o => Number(o['Int'] || o['INT'] || 0));
+          // Parse datetimes
+          data.forEach(o => {
+            o._dt = new Date(
+              o['Date'].split('/').reverse().join('-') + 'T' +
+              (o['Time'] || '00:00:00'));
+          });
+          // Filter for dataWindow
+          let now = new Date();
+          let filterLabel = "";
+          let d = data;
+          if(dataWindow==='hour') {
+            d = data.filter(o=> (now - o._dt)/(1000*60) <= 60 );
+            filterLabel = "Last 1 Hour";
+          } else if(dataWindow==='day') {
+            d = data.filter(o=> (now - o._dt)/(1000*60*60) <= 24 );
+            filterLabel = "Last 1 Day";
+          } else if(dataWindow==='week') {
+            d = data.filter(o=> (now - o._dt)/(1000*60*60*24) <= 7 );
+            filterLabel = "Last 1 Week";
+          } else {
+            filterLabel = "All Data";
+          }
+          document.getElementById('tblwindow').textContent = filterLabel;
+
+          // For time charts
+          let labels = d.map(o => `${o['Date']} ${o['Time']}`);
+          let wifiVals = d.map(o => Number(o['Wifi'] || o['WIFI'] || 0));
+          let intVals = d.map(o => Number(o['Int'] || o['INT'] || 0));
 
           // Destroy existing charts if any
-          if (wifiChart) wifiChart.destroy();
-          if (internetChart) internetChart.destroy();
+          [wifiChart, internetChart, uptimeWifiChart, uptimeIntChart, reconnectsChart].forEach(c=>{ if(c) c.destroy(); });
 
           // Wi-Fi chart
           wifiChart = new Chart(wifiChartCtx, {
@@ -90,9 +180,7 @@
             options: {
               responsive: true,
               plugins: { legend: { display: false }},
-              scales: {
-                y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } }
-              }
+              scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } } }
             }
           });
 
@@ -114,20 +202,83 @@
             options: {
               responsive: true,
               plugins: { legend: { display: false }},
-              scales: {
-                y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } }
-              }
+              scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } } }
             }
           });
 
-          // Table: show last 20 rows
+          // Pie chart for uptime (wifi)
+          let wifiUp = wifiVals.filter(v=>v==1).length;
+          let wifiDown = wifiVals.filter(v=>v==0).length;
+          uptimeWifiChart = new Chart(uptimeWifiCtx, {
+            type: 'doughnut',
+            data: {
+              labels: ['Up','Down'],
+              datasets: [{
+                data: [wifiUp, wifiDown],
+                backgroundColor: ['#1bc541','#e83a3a'],
+              }]
+            },
+            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}}, cutout:'70%' }
+          });
+
+          // Pie chart for uptime (internet)
+          let intUp = intVals.filter(v=>v==1).length;
+          let intDown = intVals.filter(v=>v==0).length;
+          uptimeIntChart = new Chart(uptimeIntCtx, {
+            type: 'doughnut',
+            data: {
+              labels: ['Up','Down'],
+              datasets: [{
+                data: [intUp, intDown],
+                backgroundColor: ['#1b73c5','#d94444'],
+              }]
+            },
+            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}}, cutout:'70%' }
+          });
+
+          // Bar chart for reconnects per hour
+          let reconnects = [];
+          let last = null;
+          d.forEach(o=>{
+            let v = Number(o['Wifi'] || o['WIFI'] || 0);
+            if(last!==null && v==1 && last==0) reconnects.push(o._dt);
+            last = v;
+          });
+          // Group by hour
+          let byHour = {};
+          reconnects.forEach(dt=>{
+            let label = dt.toISOString().slice(0,13).replace('T',' ');
+            byHour[label] = (byHour[label]||0)+1;
+          });
+          let barLabels = Object.keys(byHour);
+          let barData = Object.values(byHour);
+          reconnectsChart = new Chart(reconnectsChartCtx, {
+            type: 'bar',
+            data: {
+              labels: barLabels,
+              datasets: [{
+                label: 'Wi-Fi Reconnects per Hour',
+                data: barData,
+                backgroundColor: '#fa9b00',
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false }},
+              scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+          });
+
+          // Table: last N rows, based on window
           let tbl = document.getElementById('datatable');
           tbl.innerHTML = '';
           let cols = ['Date','Time','SSID','Wifi','Int','Discrete2','Latitude','Longitude','Altitude'];
           let thead = document.createElement('tr');
           cols.forEach(c => { let th=document.createElement('th'); th.textContent=c; thead.appendChild(th); });
           tbl.appendChild(thead);
-          data.slice(-20).forEach(row => {
+          // last hour: show all, day: 50, week: 100, all: 200
+          let maxRows = dataWindow==='hour'?d.length:dataWindow==='day'?50:dataWindow==='week'?100:200;
+          d.slice(-maxRows).forEach(row => {
             let tr = document.createElement('tr');
             cols.forEach(c => { let td=document.createElement('td'); td.textContent=row[c]||''; tr.appendChild(td); });
             tbl.appendChild(tr);
@@ -136,9 +287,13 @@
     }
 
     // Initial load
-    loadAndPlot(unitSelect.value);
-    unitSelect.addEventListener('change', () => {
-      loadAndPlot(unitSelect.value);
+    function reloadCharts() { loadAndPlot(unitSelect.value); }
+    reloadCharts();
+
+    unitSelect.addEventListener('change', reloadCharts);
+    windowSelect.addEventListener('change', function(){
+      dataWindow = windowSelect.value;
+      reloadCharts();
     });
   </script>
 </body>
