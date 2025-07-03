@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>PALwifi Fleet Wi-Fi Logger Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body { margin: 0; }
+    #map { width: 100vw; height: 100vh; }
+    #selector { position: absolute; top: 12px; left: 12px; z-index: 999; background: #fff; padding: 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div id="selector">
+    <label for="unitSelect">Select Unit:</label>
+    <select id="unitSelect"></select>
+    <label for="filter">Filter:</label>
+    <select id="filter">
+      <option value="wifi">Wi-Fi Connectivity</option>
+      <option value="internet">Internet (on ground)</option>
+    </select>
+  </div>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // List your units (adjust if more units added)
+    const units = [
+      'Palantir', 'Palantir2', 'Palantir3', 'Palantir4', 'Palantir5', 'Palantir6'
+    ];
+    const unitSelect = document.getElementById('unitSelect');
+    units.forEach(u => {
+      let opt = document.createElement('option');
+      opt.value = u;
+      opt.text = u;
+      unitSelect.add(opt);
+    });
+
+    // Add filter options
+    const filterSelect = document.getElementById('filter');
+
+    let map = L.map('map').setView([55, -100], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    let markers = [];
+
+    function plotUnit(unit, filter) {
+      // Remove old markers
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      fetch(`data/${unit}_map.json`)
+        .then(r => r.json())
+        .then(rows => {
+          let first = rows.find(row => row.Latitude && row.Longitude);
+          if (first) map.setView([first.Latitude, first.Longitude], 8);
+
+          rows.forEach(row => {
+            if (!row.Latitude || !row.Longitude) return;
+
+            let color = 'gray';
+            if (filter === 'wifi') {
+              color = (row.Wifi == 1) ? 'green' : 'red';
+            } else if (filter === 'internet') {
+              color = (row.Discrete2 == 1 && row.Int == 1) ? 'green'
+                   : (row.Discrete2 == 1 && row.Int == 0) ? 'red'
+                   : 'gray';
+            }
+
+            let marker = L.circleMarker([row.Latitude, row.Longitude], {
+              color: color, radius: 6, fillOpacity: 0.8
+            }).addTo(map);
+            marker.bindPopup(`
+              <b>${unit}</b><br>
+              Date: ${row.Date || ''} ${row.Time || ''}<br>
+              SSID: ${row.SSID || ''}<br>
+              WiFi: ${row.Wifi || ''} | Internet: ${row.Int || ''}<br>
+              Discrete2 (on ground): ${row.Discrete2 || ''}<br>
+              Lat: ${row.Latitude}, Lon: ${row.Longitude}
+            `);
+            markers.push(marker);
+          });
+        });
+    }
+
+    // Initial plot
+    plotUnit(unitSelect.value, filterSelect.value);
+
+    unitSelect.addEventListener('change', () => {
+      plotUnit(unitSelect.value, filterSelect.value);
+    });
+    filterSelect.addEventListener('change', () => {
+      plotUnit(unitSelect.value, filterSelect.value);
+    });
+  </script>
+</body>
+</html>
