@@ -1,0 +1,38 @@
+[
+  {
+    "Date": "04/07/2025",
+    "Time": "10:00:05",
+    "Latitude": 49.8789,
+    "Longitude": -119.4577,
+    "SSID": "SKT-4016",
+    "Wifi": 1,
+    "Int": 1
+  },
+  {
+    "Date": "04/07/2025",
+    "Time": "10:15:08",
+    "Latitude": 49.8795,
+    "Longitude": -119.4500,
+    "SSID": "SKT-4016",
+    "Wifi": 1,
+    "Int": 0
+  },
+  {
+    "Date": "04/07/2025",
+    "Time": "10:30:10",
+    "Latitude": 49.8812,
+    "Longitude": -119.4490,
+    "SSID": "SKT-4016",
+    "Wifi": 0,
+    "Int": 0
+  },
+  {
+    "Date": "04/07/2025",
+    "Time": "10:45:25",
+    "Latitude": 49.8841,
+    "Longitude": -119.4521,
+    "SSID": "SKT-4016",
+    "Wifi": 1,
+    "Int": 1
+  }
+]
