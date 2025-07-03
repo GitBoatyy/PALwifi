@@ -1,29 +1,38 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>PALwifi Fleet Wi-Fi Logger Map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <meta charset="utf-8">
+  <title>PALwifi Logger Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { margin: 0; }
-    #map { width: 100vw; height: 100vh; }
-    #selector { position: absolute; top: 12px; left: 12px; z-index: 999; background: #fff; padding: 6px; border-radius: 6px; }
+    body { font-family: sans-serif; margin: 0; background: #fafbfc;}
+    #container { max-width: 900px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
+    h1 { font-weight: 700; }
+    .row { display: flex; align-items: center; margin-bottom: 1em; }
+    .row label { margin-right: 8px; }
+    #linkmap { margin-left: auto; }
+    canvas { margin-bottom: 32px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px;}
+    th, td { padding: 4px 8px; border: 1px solid #eee; }
+    th { background: #f0f2f4;}
   </style>
 </head>
 <body>
-  <div id="selector">
-    <label for="unitSelect">Select Unit:</label>
-    <select id="unitSelect"></select>
-    <label for="filter">Filter:</label>
-    <select id="filter">
-      <option value="wifi">Wi-Fi Connectivity</option>
-      <option value="internet">Internet (on ground)</option>
-    </select>
+  <div id="container">
+    <h1>PALwifi Logger Analytics</h1>
+    <div class="row">
+      <label for="unitSelect">Select Unit:</label>
+      <select id="unitSelect"></select>
+      <a href="map.html" id="linkmap">View Map &raquo;</a>
+    </div>
+    <canvas id="wifiChart"></canvas>
+    <canvas id="internetChart"></canvas>
+    <div>
+      <h3>Recent Data (last 20 samples)</h3>
+      <table id="datatable"></table>
+    </div>
   </div>
-  <div id="map"></div>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // List your units (adjust if more units added)
     const units = [
       'Palantir', 'Palantir2', 'Palantir3', 'Palantir4', 'Palantir5', 'Palantir6'
     ];
@@ -35,62 +44,101 @@
       unitSelect.add(opt);
     });
 
-    // Add filter options
-    const filterSelect = document.getElementById('filter');
+    // Chart objects
+    let wifiChart, internetChart;
+    let wifiChartCtx = document.getElementById('wifiChart').getContext('2d');
+    let internetChartCtx = document.getElementById('internetChart').getContext('2d');
 
-    let map = L.map('map').setView([55, -100], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
+    function loadAndPlot(unit) {
+      fetch(`data/${unit}_parsed.csv`)
+        .then(resp => resp.text())
+        .then(csv => {
+          // Parse CSV
+          let rows = csv.trim().split('\n');
+          let headers = rows[0].split(',');
+          let data = rows.slice(1).map(row => {
+            let values = row.split(',');
+            let o = {};
+            headers.forEach((h, i) => { o[h.trim()] = values[i]; });
+            return o;
+          }).filter(o => o['Date'] && o['Time']); // filter blank lines
 
-    let markers = [];
+          // Extract fields for charting
+          let labels = data.map(o => `${o['Date']} ${o['Time']}`);
+          let wifiVals = data.map(o => Number(o['Wifi'] || o['WIFI'] || 0));
+          let intVals = data.map(o => Number(o['Int'] || o['INT'] || 0));
 
-    function plotUnit(unit, filter) {
-      // Remove old markers
-      markers.forEach(m => map.removeLayer(m));
-      markers = [];
-      fetch(`data/${unit}_map.json`)
-        .then(r => r.json())
-        .then(rows => {
-          let first = rows.find(row => row.Latitude && row.Longitude);
-          if (first) map.setView([first.Latitude, first.Longitude], 8);
+          // Destroy existing charts if any
+          if (wifiChart) wifiChart.destroy();
+          if (internetChart) internetChart.destroy();
 
-          rows.forEach(row => {
-            if (!row.Latitude || !row.Longitude) return;
-
-            let color = 'gray';
-            if (filter === 'wifi') {
-              color = (row.Wifi == 1) ? 'green' : 'red';
-            } else if (filter === 'internet') {
-              color = (row.Discrete2 == 1 && row.Int == 1) ? 'green'
-                   : (row.Discrete2 == 1 && row.Int == 0) ? 'red'
-                   : 'gray';
+          // Wi-Fi chart
+          wifiChart = new Chart(wifiChartCtx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Wi-Fi Connected',
+                data: wifiVals,
+                backgroundColor: 'rgba(0,180,0,0.15)',
+                borderColor: 'rgba(0,150,0,0.7)',
+                pointRadius: 2,
+                fill: true,
+                stepped: true,
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false }},
+              scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } }
+              }
             }
+          });
 
-            let marker = L.circleMarker([row.Latitude, row.Longitude], {
-              color: color, radius: 6, fillOpacity: 0.8
-            }).addTo(map);
-            marker.bindPopup(`
-              <b>${unit}</b><br>
-              Date: ${row.Date || ''} ${row.Time || ''}<br>
-              SSID: ${row.SSID || ''}<br>
-              WiFi: ${row.Wifi || ''} | Internet: ${row.Int || ''}<br>
-              Discrete2 (on ground): ${row.Discrete2 || ''}<br>
-              Lat: ${row.Latitude}, Lon: ${row.Longitude}
-            `);
-            markers.push(marker);
+          // Internet chart
+          internetChart = new Chart(internetChartCtx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Internet Connectivity',
+                data: intVals,
+                backgroundColor: 'rgba(0,0,180,0.15)',
+                borderColor: 'rgba(0,0,180,0.6)',
+                pointRadius: 2,
+                fill: true,
+                stepped: true,
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: { legend: { display: false }},
+              scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } }
+              }
+            }
+          });
+
+          // Table: show last 20 rows
+          let tbl = document.getElementById('datatable');
+          tbl.innerHTML = '';
+          let cols = ['Date','Time','SSID','Wifi','Int','Discrete2','Latitude','Longitude','Altitude'];
+          let thead = document.createElement('tr');
+          cols.forEach(c => { let th=document.createElement('th'); th.textContent=c; thead.appendChild(th); });
+          tbl.appendChild(thead);
+          data.slice(-20).forEach(row => {
+            let tr = document.createElement('tr');
+            cols.forEach(c => { let td=document.createElement('td'); td.textContent=row[c]||''; tr.appendChild(td); });
+            tbl.appendChild(tr);
           });
         });
     }
 
-    // Initial plot
-    plotUnit(unitSelect.value, filterSelect.value);
-
+    // Initial load
+    loadAndPlot(unitSelect.value);
     unitSelect.addEventListener('change', () => {
-      plotUnit(unitSelect.value, filterSelect.value);
-    });
-    filterSelect.addEventListener('change', () => {
-      plotUnit(unitSelect.value, filterSelect.value);
+      loadAndPlot(unitSelect.value);
     });
   </script>
 </body>
