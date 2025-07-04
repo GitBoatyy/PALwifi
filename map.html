@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <title>PALwifi Logger Map</title>
-  <link rel="stylesheet" href="css/leaflet.css"/>
-  <script src="js/leaflet.js"></script>
+  <!-- Use Leaflet CDN instead of local files -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     body { margin:0; background: #fafbfc; }
     #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
@@ -15,9 +16,9 @@
     #navbar a:hover, #navbar a.active { background: #2362a1; }
     #container { max-width: 1080px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
     h1 { font-weight: 700; }
-    #controls { display: flex; align-items: center; gap: 18px; margin-bottom: 14px; }
+    #controls { margin-bottom: 14px; display: flex; align-items: center; gap: 18px; }
     #map { width: 100%; height: 600px; border-radius: 12px; border: 1px solid #ddd; margin: 0 auto;}
-    #unitSelect, #filterSelect { font-size: 1.05em; padding: 4px 12px;}
+    #unitSelect, #filterSelect { margin-bottom: 0; font-size: 1.05em; padding: 4px 12px;}
   </style>
 </head>
 <body>
@@ -34,13 +35,13 @@
       <label for="filterSelect">Filter:</label>
       <select id="filterSelect">
         <option value="wifi">Wi-Fi Connectivity</option>
-        <option value="internet">Internet Connectivity (on ground)</option>
+        <option value="internet">Internet Connectivity</option>
       </select>
     </div>
     <div id="map"></div>
   </div>
   <script>
-    // Hardcoded units
+    // HARDCODED units
     const units = [
       'Palantir',
       'Palantir2',
@@ -57,70 +58,66 @@
       unitSelect.add(opt);
     });
 
-    // Navbar logic
+    // NAVBAR logic
     document.getElementById('nav_dashboard').onclick = ()=>{window.location='index.html';};
+    document.getElementById('nav_map').onclick = (e)=>{e.preventDefault();}; // already here
     document.getElementById('nav_home').onclick = (e)=>{
       e.preventDefault();
       alert('Welcome to PALwifi! Use Dashboard or Map.');
     };
 
-    // Map
-    let map = L.map('map').setView([49.9, -119.5], 10); // Centered on Kelowna
+    // Initialize map
+    let map = L.map('map').setView([49.9, -119.5], 10); // Default: Kelowna
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
+
     let markersLayer = L.layerGroup().addTo(map);
 
-    // Filter logic
-    const filterSelect = document.getElementById('filterSelect');
-
-    function loadAndPlot(unit) {
+    function loadAndPlot(unit, filter='wifi') {
       markersLayer.clearLayers();
       fetch(`data/${unit}_map.json`)
         .then(resp => resp.json())
         .then(points => {
           let count = 0;
-          let filter = filterSelect.value;
           points.forEach(p => {
+            // Check if coordinates exist and are numbers
             let lat = parseFloat(p.Latitude || p.lat);
             let lon = parseFloat(p.Longitude || p.lon || p.lng);
             if (!isNaN(lat) && !isNaN(lon)) {
-              // Filtering logic
+              // Colors by filter
               let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
               let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
-              let discrete2 = (p.Discrete2 !== undefined) ? parseInt(p.Discrete2) : 1;
               let show = true;
-              let color = 'gray';
-              if (filter === 'wifi') {
-                color = wifi ? 'green' : 'red';
-              } else if (filter === 'internet') {
-                // Show only when Discrete2 == 1 (on ground)
-                if (discrete2 === 1) {
-                  color = inet ? 'green' : 'red';
-                } else {
-                  show = false;
-                }
+              let color = "gray";
+              if (filter === "wifi") {
+                color = wifi ? "green" : "red";
+                show = true;
+              } else if (filter === "internet") {
+                color = (p.Discrete2 == 1 && inet) ? "green" : (p.Discrete2 == 1 && !inet) ? "red" : "gray";
+                show = (p.Discrete2 == 1); // Only plot on-ground
               }
-              if (!show) return;
-              let marker = L.circleMarker([lat, lon], {
-                radius: 6,
-                fillColor: color,
-                color: "#111",
-                weight: 1,
-                fillOpacity: 0.8
-              }).addTo(markersLayer);
-              let popup = `
-                <b>${unit}</b><br>
-                Time: ${p.Date || ''} ${p.Time || ''}<br>
-                SSID: ${p.SSID || ''}<br>
-                Wifi: ${wifi ? "Yes" : "No"}<br>
-                Internet: ${inet ? "Yes" : "No"}<br>
-                Lat: ${lat}<br>
-                Lon: ${lon}
-              `;
-              marker.bindPopup(popup);
-              count++;
+              if (show) {
+                let marker = L.circleMarker([lat, lon], {
+                  radius: 6,
+                  fillColor: color,
+                  color: "#111",
+                  weight: 1,
+                  fillOpacity: 0.8
+                }).addTo(markersLayer);
+                let popup = `
+                  <b>${unit}</b><br>
+                  Time: ${p.Date || ''} ${p.Time || ''}<br>
+                  SSID: ${p.SSID || ''}<br>
+                  Wifi: ${wifi ? "Yes" : "No"}<br>
+                  Internet: ${inet ? "Yes" : "No"}<br>
+                  Lat: ${lat}<br>
+                  Lon: ${lon}
+                `;
+                marker.bindPopup(popup);
+                count++;
+              }
             }
           });
           if (count > 0) {
@@ -132,9 +129,18 @@
     }
 
     // Initial load
-    loadAndPlot(units[0]);
-    unitSelect.addEventListener('change', ()=> loadAndPlot(unitSelect.value));
-    filterSelect.addEventListener('change', ()=> loadAndPlot(unitSelect.value));
+    let currentUnit = units[0];
+    let currentFilter = 'wifi';
+    loadAndPlot(currentUnit, currentFilter);
+
+    unitSelect.addEventListener('change', () => {
+      currentUnit = unitSelect.value;
+      loadAndPlot(currentUnit, currentFilter);
+    });
+    document.getElementById('filterSelect').addEventListener('change', (e) => {
+      currentFilter = e.target.value;
+      loadAndPlot(currentUnit, currentFilter);
+    });
   </script>
 </body>
 </html>
