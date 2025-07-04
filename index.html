@@ -30,20 +30,8 @@
   <nav id="navbar">
     <a href="index.html" class="active" id="nav_dashboard">Dashboard</a>
     <a href="map.html" id="nav_map">Map</a>
-    <a href="#" id="nav_home">Home</a>
   </nav>
   <div id="container">
-    <!-- Home Section -->
-    <div id="welcome">
-      <h1>Welcome to the PALwifi Analytics Dashboard</h1>
-      <p>This dashboard summarizes Wi-Fi and internet connectivity from your deployed Pi loggers.  
-        Use the navigation above to view charts, explore data by unit, or see visualizations on the map.</p>
-      <ul>
-        <li>Dashboard: Connectivity charts and tables per unit</li>
-        <li>Map: Plot all log points with connectivity colorization</li>
-        <li>All data is refreshed hourly from the remote units</li>
-      </ul>
-    </div>
     <!-- Dashboard Section -->
     <div id="dashboard">
       <h1>PALwifi Logger Dashboard</h1>
@@ -90,12 +78,11 @@
       } else {
         document.getElementById('dashboard').style.display = 'none';
         document.getElementById('welcome').style.display = 'block';
-        document.getElementById('nav_home').classList.add('active');
+
       }
     }
     document.getElementById('nav_dashboard').onclick = function(e){e.preventDefault();setActiveNav("dashboard");};
     document.getElementById('nav_map').onclick = function(e){e.preventDefault();setActiveNav("map");};
-    document.getElementById('nav_home').onclick = function(e){e.preventDefault();setActiveNav("home");};
     setActiveNav("dashboard");
 
     // Units (update if you add/remove)
@@ -126,7 +113,8 @@
 
     // Window select
     const windowSelect = document.getElementById('windowSelect');
-    let dataWindow = 'hour'; // default
+    windowSelect.value = "week";
+    let dataWindow = 'week'; // default
 
     function loadAndPlot(unit) {
       fetch(`data/${unit}_parsed.csv`)
@@ -191,7 +179,9 @@
             },
             options: {
               responsive: true,
-              plugins: { legend: { display: false }},
+              plugins: { legend: { display: false },
+              title: { display: true, text: 'Wi-Fi Connectivity Over Time'}
+              },
               scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } } }
             }
           });
@@ -213,7 +203,9 @@
             },
             options: {
               responsive: true,
-              plugins: { legend: { display: false }},
+              plugins: { legend: { display: false },
+              title: { display: true, text: 'Internet Connectivity Over Time'},
+              },
               scales: { y: { beginAtZero: true, ticks: { stepSize: 1, callback: v=>v ? 'Yes':'No' } } }
             }
           });
@@ -230,7 +222,7 @@
                 backgroundColor: ['#1bc541','#e83a3a'],
               }]
             },
-            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}}, cutout:'70%' }
+            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}, title: {display: true, text: 'Wi-Fi Uptime'}}, cutout:'70%' }
           });
 
           // Pie chart for uptime (internet)
@@ -245,7 +237,7 @@
                 backgroundColor: ['#1b73c5','#d94444'],
               }]
             },
-            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}}, cutout:'70%' }
+            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}, title: {display: true, text: 'Internet Uptime'}}, cutout:'70%' }
           });
 
           // Bar chart for reconnects per hour
@@ -276,7 +268,7 @@
             },
             options: {
               responsive: true,
-              plugins: { legend: { display: false }},
+              plugins: { legend: { display: false }, title: { display: true, text: 'Wi-Fi Reconnects per Hour' }},
               scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
           });
