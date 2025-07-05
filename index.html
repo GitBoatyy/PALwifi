@@ -41,8 +41,8 @@
           View:
           <select id="windowSelect">
             <option value="hour">Last 1 Hour</option>
-            <option value="day">Last 1 Day</option>
-            <option value="week" selected>Last 1 Week</option>
+            <option value="day" selected>Last 1 Day</option>
+            <option value="week">Last 1 Week</option>
             <option value="all">All Data</option>
           </select>
         </span>
@@ -69,281 +69,278 @@
       </div>
     </div>
   </div>
-    <script>
-    // NAVBAR logic (active tab highlight)
-    function setActiveNav(tab) {
-      document.querySelectorAll('#navbar a').forEach(a=>a.classList.remove('active'));
-      if(tab==="dashboard"){
-        document.getElementById('dashboard').style.display = 'block';
-        document.getElementById('nav_dashboard').classList.add('active');
-      } else if(tab==="map") {
-        window.location = "map.html";
-      }
+<script>
+  // NAVBAR logic (active tab highlight)
+  function setActiveNav(tab) {
+    document.querySelectorAll('#navbar a').forEach(a=>a.classList.remove('active'));
+    if(tab==="dashboard"){
+      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('nav_dashboard').classList.add('active');
+    } else if(tab==="map") {
+      window.location = "map.html";
     }
-    document.getElementById('nav_dashboard').onclick = function(e){e.preventDefault();setActiveNav("dashboard");};
-    document.getElementById('nav_map').onclick = function(e){e.preventDefault();setActiveNav("map");};
-    setActiveNav("dashboard");
-  
-    // Units (update if you add/remove)
-    const units = [
-      'Palantir',
-      'Palantir2',
-      'Palantir3',
-      'Palantir4',
-      'Palantir5',
-      'Palantir6',
-      'Palantir7'
-    ];
-    const unitSelect = document.getElementById('unitSelect');
-    unitSelect.innerHTML = '';
-    units.forEach(u => {
-      let opt = document.createElement('option');
-      opt.value = u; opt.text = u;
-      unitSelect.add(opt);
-    });
-  
-    // Chart objects
-    let wifiChart, internetChart, uptimeWifiChart, uptimeIntChart, reconnectsChart;
-    let wifiChartCtx = document.getElementById('wifiChart').getContext('2d');
-    let internetChartCtx = document.getElementById('internetChart').getContext('2d');
-    let uptimeWifiCtx = document.getElementById('uptimeWifiChart').getContext('2d');
-    let uptimeIntCtx = document.getElementById('uptimeIntChart').getContext('2d');
-    let reconnectsChartCtx = document.getElementById('reconnectsChart').getContext('2d');
-  
-    // Window select
-    const windowSelect = document.getElementById('windowSelect');
-    windowSelect.value = "week";
-    let dataWindow = 'week'; // default
-  
-    function loadAndPlot(unit) {
-      fetch(`data/${unit}_parsed.csv`)
-        .then(resp => resp.text())
-        .then(csv => {
-          // Parse CSV
-          let rows = csv.trim().split('\n');
-          let headers = rows[0].split(',');
-          let data = rows.slice(1).map(row => {
-            let values = row.split(',');
-            let o = {};
-            headers.forEach((h, i) => { o[h.trim()] = values[i]; });
-            return o;
-          }).filter(o => o['Date'] && o['Time']); // filter blank lines
-  
-          // Parse datetimes
-          data.forEach(o => {
-            o._dt = new Date(
-              o['Date'].split('/').reverse().join('-') + 'T' +
-              (o['Time'] || '00:00:00'));
-          });
-          // Filter for dataWindow
-          let now = new Date();
-          let filterLabel = "";
-          let d = data;
-          if(dataWindow==='hour') {
-            d = data.filter(o=> (now - o._dt)/(1000*60) <= 60 );
-            filterLabel = "Last 1 Hour";
-          } else if(dataWindow==='day') {
-            d = data.filter(o=> (now - o._dt)/(1000*60*60) <= 24 );
-            filterLabel = "Last 1 Day";
-          } else if(dataWindow==='week') {
-            d = data.filter(o=> (now - o._dt)/(1000*60*60*24) <= 7 );
-            filterLabel = "Last 1 Week";
-          } else {
-            filterLabel = "All Data";
-          }
-          document.getElementById('tblwindow').textContent = filterLabel;
-  
-          // --- Chart coloring logic ---
-          // Build master list of all timestamps in order
-          const timestamps = d.map(o => `${o['Date']} ${o['Time']}`);
-          // Find all unique registrations (or fallback to SSID if missing)
-          const registrations = [...new Set(d.map(o => o['Registration'] || o['SSID'] || "Unknown"))];
-          // Assign a color for each registration (expand as needed)
-          const regColors = [
-            '#1bc541', // green
-            '#1976d2', // blue
-            '#fa9b00', // orange
-            '#ad1bd2', // purple
-            '#d21b1b', // red
-            '#18b9b9', // teal
-            '#d2a11b', // brown/gold
-          ];
-          function regColor(idx) { return regColors[idx % regColors.length]; }
-  
-          // ---- Build Wi-Fi datasets ----
-          const wifiDatasets = registrations.map((reg, idx) => {
-            return {
-              label: reg,
-              data: timestamps.map(ts => {
-                const point = d.find(o => (`${o['Date']} ${o['Time']}` === ts) && ((o['Registration'] || o['SSID'] || "Unknown") === reg));
-                return point ? Number(point['Wifi'] || point['WIFI'] || 0) : null;
-              }),
-              borderColor: regColor(idx),
-              backgroundColor: regColor(idx) + '44',
-              fill: false,
-              stepped: true,
-              spanGaps: false,
-              pointRadius: 2,
-              tension: 0,
-            };
-          });
-  
-          // ---- Build Internet datasets ----
-          const intDatasets = registrations.map((reg, idx) => {
-            return {
-              label: reg,
-              data: timestamps.map(ts => {
-                const point = d.find(o => (`${o['Date']} ${o['Time']}` === ts) && ((o['Registration'] || o['SSID'] || "Unknown") === reg));
-                return point ? Number(point['Int'] || point['INT'] || 0) : null;
-              }),
-              borderColor: regColor(idx),
-              backgroundColor: regColor(idx) + '44',
-              fill: false,
-              stepped: true,
-              spanGaps: false,
-              pointRadius: 2,
-              tension: 0,
-            };
-          });
-  
-          // Destroy existing charts if any
-          [wifiChart, internetChart, uptimeWifiChart, uptimeIntChart, reconnectsChart].forEach(c=>{ if(c) c.destroy(); });
-  
-          // ---- Wi-Fi Connectivity Chart (Registration-colored) ----
-          wifiChart = new Chart(wifiChartCtx, {
-            type: 'line',
-            data: {
-              labels: timestamps,
-              datasets: wifiDatasets
-            },
-            options: {
-              responsive: true,
-              plugins: { 
-                legend: { display: true, position: 'top' },
-                title: { display: true, text: 'Wi-Fi Connectivity Over Time' }
-              },
-              scales: { 
-                y: { 
-                  beginAtZero: true, 
-                  ticks: { stepSize: 1, callback: v => v ? 'Yes' : 'No' }
-                }
-              }
-            }
-          });
-  
-          // ---- Internet Connectivity Chart (Registration-colored) ----
-          internetChart = new Chart(internetChartCtx, {
-            type: 'line',
-            data: {
-              labels: timestamps,
-              datasets: intDatasets
-            },
-            options: {
-              responsive: true,
-              plugins: { 
-                legend: { display: true, position: 'top' },
-                title: { display: true, text: 'Internet Connectivity Over Time' }
-              },
-              scales: { 
-                y: { 
-                  beginAtZero: true, 
-                  ticks: { stepSize: 1, callback: v => v ? 'Yes' : 'No' }
-                }
-              }
-            }
-          });
-  
-          // Pie chart for uptime (wifi)
-          let wifiUp = d.filter(o=>(Number(o['Wifi'] || o['WIFI'] || 0))==1).length;
-          let wifiDown = d.filter(o=>(Number(o['Wifi'] || o['WIFI'] || 0))==0).length;
-          uptimeWifiChart = new Chart(uptimeWifiCtx, {
-            type: 'doughnut',
-            data: {
-              labels: ['Up','Down'],
-              datasets: [{
-                data: [wifiUp, wifiDown],
-                backgroundColor: ['#1bc541','#e83a3a'],
-              }]
-            },
-            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}, title: {display: true, text: 'Wi-Fi Uptime'}}, cutout:'70%' }
-          });
-  
-          // Pie chart for uptime (internet)
-          let intUp = d.filter(o=>(Number(o['Int'] || o['INT'] || 0))==1).length;
-          let intDown = d.filter(o=>(Number(o['Int'] || o['INT'] || 0))==0).length;
-          uptimeIntChart = new Chart(uptimeIntCtx, {
-            type: 'doughnut',
-            data: {
-              labels: ['Up','Down'],
-              datasets: [{
-                data: [intUp, intDown],
-                backgroundColor: ['#1b73c5','#d94444'],
-              }]
-            },
-            options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}, title: {display: true, text: 'Internet Uptime'}}, cutout:'70%' }
-          });
-  
-          // Bar chart for reconnects per hour (using ALL data points, not split by reg)
-          let reconnects = [];
-          let last = null;
-          d.forEach(o=>{
-            let v = Number(o['Wifi'] || o['WIFI'] || 0);
-            if(last!==null && v==1 && last==0) reconnects.push(o._dt);
-            last = v;
-          });
-          // Group by hour
-          let byHour = {};
-          reconnects.forEach(dt=>{
-            let label = dt.toISOString().slice(0,13).replace('T',' ');
-            byHour[label] = (byHour[label]||0)+1;
-          });
-          let barLabels = Object.keys(byHour);
-          let barData = Object.values(byHour);
-          reconnectsChart = new Chart(reconnectsChartCtx, {
-            type: 'bar',
-            data: {
-              labels: barLabels,
-              datasets: [{
-                label: 'Wi-Fi Reconnects per Hour',
-                data: barData,
-                backgroundColor: '#fa9b00',
-              }]
-            },
-            options: {
-              responsive: true,
-              plugins: { legend: { display: false }, title: { display: true, text: 'Wi-Fi Reconnects per Hour' }},
-              scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-            }
-          });
-  
-          // Table: last N rows, based on window
-          let tbl = document.getElementById('datatable');
-          tbl.innerHTML = '';
-          let cols = ['Date','Time','Registration','SSID','Wifi','Int','Discrete2','Latitude','Longitude','Altitude'];
-          let thead = document.createElement('tr');
-          cols.forEach(c => { let th=document.createElement('th'); th.textContent=c; thead.appendChild(th); });
-          tbl.appendChild(thead);
-          // last hour: show all, day: 50, week: 100, all: 200
-          let maxRows = dataWindow==='hour'?d.length:dataWindow==='day'?50:dataWindow==='week'?100:200;
-          d.slice(-maxRows).forEach(row => {
-            let tr = document.createElement('tr');
-            cols.forEach(c => { let td=document.createElement('td'); td.textContent=row[c]||''; tr.appendChild(td); });
-            tbl.appendChild(tr);
-          });
-        });
-    }
-  
-    // Initial load
-    function reloadCharts() { loadAndPlot(unitSelect.value); }
-    unitSelect.value = "Palantir";
-    reloadCharts();
-  
-    unitSelect.addEventListener('change', reloadCharts);
-    windowSelect.addEventListener('change', function(){
-      dataWindow = windowSelect.value;
-      reloadCharts();
-    });
-  </script>
+  }
+  document.getElementById('nav_dashboard').onclick = function(e){e.preventDefault();setActiveNav("dashboard");};
+  document.getElementById('nav_map').onclick = function(e){e.preventDefault();setActiveNav("map");};
+  setActiveNav("dashboard");
 
+  // Units (update if you add/remove)
+  const units = [
+    'Palantir',
+    'Palantir2',
+    'Palantir3',
+    'Palantir4',
+    'Palantir5',
+    'Palantir6',
+    'Palantir7'
+  ];
+  const unitSelect = document.getElementById('unitSelect');
+  unitSelect.innerHTML = '';
+  units.forEach(u => {
+    let opt = document.createElement('option');
+    opt.value = u; opt.text = u;
+    unitSelect.add(opt);
+  });
+
+  // Downsample helper
+  function downsample(arr, everyN) {
+    if (arr.length <= everyN) return arr;
+    let out = [];
+    for (let i = 0; i < arr.length; i += everyN) out.push(arr[i]);
+    return out;
+  }
+
+  // Chart objects
+  let wifiChart, internetChart, uptimeWifiChart, uptimeIntChart, reconnectsChart;
+  let wifiChartCtx = document.getElementById('wifiChart').getContext('2d');
+  let internetChartCtx = document.getElementById('internetChart').getContext('2d');
+  let uptimeWifiCtx = document.getElementById('uptimeWifiChart').getContext('2d');
+  let uptimeIntCtx = document.getElementById('uptimeIntChart').getContext('2d');
+  let reconnectsChartCtx = document.getElementById('reconnectsChart').getContext('2d');
+
+  // Window select
+  const windowSelect = document.getElementById('windowSelect');
+  windowSelect.value = "day";
+  let dataWindow = 'day'; // default
+
+  function loadAndPlot(unit) {
+    // Use week.csv for all except all-data view
+    let file = (dataWindow === 'all') ? `data/${unit}_parsed.csv` : `data/${unit}_week.csv`;
+    fetch(file)
+      .then(resp => resp.text())
+      .then(csv => {
+        // Parse CSV
+        let rows = csv.trim().split('\n');
+        let headers = rows[0].split(',');
+        let data = rows.slice(1).map(row => {
+          let values = row.split(',');
+          let o = {};
+          headers.forEach((h, i) => { o[h.trim()] = values[i]; });
+          return o;
+        }).filter(o => o['Date'] && o['Time']);
+
+        // Parse datetimes
+        data.forEach(o => {
+          o._dt = new Date(
+            o['Date'].split('/').reverse().join('-') + 'T' +
+            (o['Time'] || '00:00:00'));
+        });
+
+        // Filter for dataWindow (redundant, but needed if user picks all-data csv for week view)
+        let now = new Date();
+        let filterLabel = "";
+        let d = data;
+        if(dataWindow==='hour') {
+          d = data.filter(o=> (now - o._dt)/(1000*60) <= 60 );
+          filterLabel = "Last 1 Hour";
+        } else if(dataWindow==='day') {
+          d = data.filter(o=> (now - o._dt)/(1000*60*60) <= 24 );
+          filterLabel = "Last 1 Day";
+        } else if(dataWindow==='week') {
+          d = data.filter(o=> (now - o._dt)/(1000*60*60*24) <= 7 );
+          filterLabel = "Last 1 Week";
+        } else {
+          filterLabel = "All Data";
+        }
+        document.getElementById('tblwindow').textContent = filterLabel;
+
+        // Downsample for charts if many points
+        let displayData = d;
+        if ((dataWindow === 'week' || dataWindow === 'all') && displayData.length > 1000) {
+          displayData = downsample(displayData, 5);
+        }
+
+        // --- Chart coloring logic ---
+        const timestamps = displayData.map(o => `${o['Date']} ${o['Time']}`);
+        const registrations = [...new Set(displayData.map(o => o['Registration'] || o['SSID'] || "Unknown"))];
+        const regColors = [
+          '#1bc541', '#1976d2', '#fa9b00', '#ad1bd2', '#d21b1b', '#18b9b9', '#d2a11b'
+        ];
+        function regColor(idx) { return regColors[idx % regColors.length]; }
+
+        // ---- Build Wi-Fi datasets ----
+        const wifiDatasets = registrations.map((reg, idx) => ({
+          label: reg,
+          data: timestamps.map(ts => {
+            const point = displayData.find(o => (`${o['Date']} ${o['Time']}` === ts) && ((o['Registration'] || o['SSID'] || "Unknown") === reg));
+            return point ? Number(point['Wifi'] || point['WIFI'] || 0) : null;
+          }),
+          borderColor: regColor(idx),
+          backgroundColor: regColor(idx) + '44',
+          fill: false,
+          stepped: true,
+          spanGaps: false,
+          pointRadius: 2,
+          tension: 0,
+        }));
+
+        // ---- Build Internet datasets ----
+        const intDatasets = registrations.map((reg, idx) => ({
+          label: reg,
+          data: timestamps.map(ts => {
+            const point = displayData.find(o => (`${o['Date']} ${o['Time']}` === ts) && ((o['Registration'] || o['SSID'] || "Unknown") === reg));
+            return point ? Number(point['Int'] || point['INT'] || 0) : null;
+          }),
+          borderColor: regColor(idx),
+          backgroundColor: regColor(idx) + '44',
+          fill: false,
+          stepped: true,
+          spanGaps: false,
+          pointRadius: 2,
+          tension: 0,
+        }));
+
+        // Destroy existing charts if any
+        [wifiChart, internetChart, uptimeWifiChart, uptimeIntChart, reconnectsChart].forEach(c=>{ if(c) c.destroy(); });
+
+        // ---- Wi-Fi Connectivity Chart (Registration-colored) ----
+        wifiChart = new Chart(wifiChartCtx, {
+          type: 'line',
+          data: {
+            labels: timestamps,
+            datasets: wifiDatasets
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: true, position: 'top' },
+              title: { display: true, text: 'Wi-Fi Connectivity Over Time' }
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => v ? 'Yes' : 'No' } }
+            }
+          }
+        });
+
+        // ---- Internet Connectivity Chart (Registration-colored) ----
+        internetChart = new Chart(internetChartCtx, {
+          type: 'line',
+          data: {
+            labels: timestamps,
+            datasets: intDatasets
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: true, position: 'top' },
+              title: { display: true, text: 'Internet Connectivity Over Time' }
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { stepSize: 1, callback: v => v ? 'Yes' : 'No' } }
+            }
+          }
+        });
+
+        // Pie chart for uptime (wifi)
+        let wifiUp = displayData.filter(o=>(Number(o['Wifi'] || o['WIFI'] || 0))==1).length;
+        let wifiDown = displayData.filter(o=>(Number(o['Wifi'] || o['WIFI'] || 0))==0).length;
+        uptimeWifiChart = new Chart(uptimeWifiCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Up','Down'],
+            datasets: [{
+              data: [wifiUp, wifiDown],
+              backgroundColor: ['#1bc541','#e83a3a'],
+            }]
+          },
+          options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}, title: {display: true, text: 'Wi-Fi Uptime'}}, cutout:'70%' }
+        });
+
+        // Pie chart for uptime (internet)
+        let intUp = displayData.filter(o=>(Number(o['Int'] || o['INT'] || 0))==1).length;
+        let intDown = displayData.filter(o=>(Number(o['Int'] || o['INT'] || 0))==0).length;
+        uptimeIntChart = new Chart(uptimeIntCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Up','Down'],
+            datasets: [{
+              data: [intUp, intDown],
+              backgroundColor: ['#1b73c5','#d94444'],
+            }]
+          },
+          options: { responsive:true, plugins: {legend:{display:true, position:'bottom'}, title: {display: true, text: 'Internet Uptime'}}, cutout:'70%' }
+        });
+
+        // Bar chart for reconnects per hour (using ALL data points, not split by reg)
+        let reconnects = [];
+        let last = null;
+        displayData.forEach(o=>{
+          let v = Number(o['Wifi'] || o['WIFI'] || 0);
+          if(last!==null && v==1 && last==0) reconnects.push(o._dt);
+          last = v;
+        });
+        // Group by hour
+        let byHour = {};
+        reconnects.forEach(dt=>{
+          let label = dt.toISOString().slice(0,13).replace('T',' ');
+          byHour[label] = (byHour[label]||0)+1;
+        });
+        let barLabels = Object.keys(byHour);
+        let barData = Object.values(byHour);
+        reconnectsChart = new Chart(reconnectsChartCtx, {
+          type: 'bar',
+          data: {
+            labels: barLabels,
+            datasets: [{
+              label: 'Wi-Fi Reconnects per Hour',
+              data: barData,
+              backgroundColor: '#fa9b00',
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false }, title: { display: true, text: 'Wi-Fi Reconnects per Hour' }},
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+          }
+        });
+
+        // Table: last N rows, based on window
+        let tbl = document.getElementById('datatable');
+        tbl.innerHTML = '';
+        let cols = ['Date','Time','Registration','SSID','Wifi','Int','Discrete2','Latitude','Longitude','Altitude'];
+        let thead = document.createElement('tr');
+        cols.forEach(c => { let th=document.createElement('th'); th.textContent=c; thead.appendChild(th); });
+        tbl.appendChild(thead);
+        // last hour: show all, day: 50, week: 100, all: 200
+        let maxRows = dataWindow==='hour'?displayData.length:dataWindow==='day'?50:dataWindow==='week'?100:200;
+        displayData.slice(-maxRows).forEach(row => {
+          let tr = document.createElement('tr');
+          cols.forEach(c => { let td=document.createElement('td'); td.textContent=row[c]||''; tr.appendChild(td); });
+          tbl.appendChild(tr);
+        });
+      });
+  }
+
+  // Initial load
+  function reloadCharts() { loadAndPlot(unitSelect.value); }
+  unitSelect.value = "Palantir";
+  reloadCharts();
+
+  unitSelect.addEventListener('change', reloadCharts);
+  windowSelect.addEventListener('change', function(){
+    dataWindow = windowSelect.value;
+    reloadCharts();
+  });
+</script>
 </body>
 </html>
