@@ -140,18 +140,28 @@
         }).filter(o => o['Date'] && o['Time']);
 
         // Parse datetimes
+        // Parse datetimes (FORCE UTC by adding 'Z'!)
         data.forEach(o => {
           o._dt = new Date(
             o['Date'].split('/').reverse().join('-') + 'T' +
-            (o['Time'] || '00:00:00'));
+            (o['Time'] || '00:00:00') + 'Z');
         });
+
 
         // Filter for dataWindow (redundant, but needed if user picks all-data csv for week view)
         let now = new Date();
+        console.log("Browser Local Time: " + now.toString());
+        console.log("Current UTC Time:   " + now.toISOString());
+        console.log("last data row time: " + data[data.length-1]._dt.toISOString());
         let filterLabel = "";
         let d = data;
-        if(dataWindow==='hour') {
-          d = data.filter(o=> (now - o._dt)/(1000*60) <= 60 );
+        if (dataWindow === 'hour') {
+          let now = new Date();
+          let thisHourStart = new Date(now);
+          thisHourStart.setMinutes(0, 0, 0);
+          let prevHourStart = new Date(thisHourStart.getTime() - 60*60*1000);
+          let prevHourEnd = new Date(thisHourStart.getTime() - 1);
+          d = data.filter(o => o._dt >= prevHourStart && o._dt <= prevHourEnd);
           filterLabel = "Last 1 Hour";
         } else if(dataWindow==='day') {
           d = data.filter(o=> (now - o._dt)/(1000*60*60) <= 24 );
