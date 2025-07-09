@@ -75,8 +75,8 @@
           let count = 0;
           let first = null;
           points.forEach(p => {
-            let lat = parseFloat(p.Latitude || p.lat);
-            let lon = parseFloat(p.Longitude || p.lon || p.lng);
+            let lat = parseFloat(p.Latitude || p.Lat || p.lat);
+            let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
             if (!isNaN(lat) && !isNaN(lon)) {
               if(!first) first = [lat, lon];
               let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
