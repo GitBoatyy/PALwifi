@@ -72,23 +72,18 @@
       fetch(`data/${unit}_map.json`)
         .then(resp => resp.json())
         .then(points => {
-          let count = 0;
           let first = null;
+          let reds = [];
+          let greens = [];
+    
           points.forEach(p => {
             let lat = parseFloat(p.Latitude || p.Lat || p.lat);
             let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
             if (!isNaN(lat) && !isNaN(lon)) {
-              if(!first) first = [lat, lon];
+              if (!first) first = [lat, lon];
               let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
               let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
               let color = (wifi && inet) ? "green" : "red";
-              let marker = L.circleMarker([lat, lon], {
-                radius: 6,
-                fillColor: color,
-                color: "none",
-                weight: 0,
-                fillOpacity: 0.8
-              }).addTo(markersLayer);
               let reg = p.Registration || p.SSID || '';
               let popup = `
                 <b>${unit}</b><br>
@@ -100,10 +95,36 @@
                 Lat: ${lat}<br>
                 Lon: ${lon}
               `;
-              marker.bindPopup(popup);
-              count++;
+              let markerData = { lat, lon, color, popup };
+              if (color === "green") greens.push(markerData);
+              else reds.push(markerData);
             }
           });
+    
+          // Add reds first
+          reds.forEach(({ lat, lon, popup }) => {
+            let marker = L.circleMarker([lat, lon], {
+              radius: 6,
+              fillColor: "red",
+              color: "none",
+              weight: 0,
+              fillOpacity: 0.8
+            }).addTo(markersLayer);
+            marker.bindPopup(popup);
+          });
+    
+          // Add greens after, so they are always on top
+          greens.forEach(({ lat, lon, popup }) => {
+            let marker = L.circleMarker([lat, lon], {
+              radius: 6,
+              fillColor: "green",
+              color: "none",
+              weight: 0,
+              fillOpacity: 0.8
+            }).addTo(markersLayer);
+            marker.bindPopup(popup);
+          });
+    
           if (first) map.setView(first, 11);
         });
     }
