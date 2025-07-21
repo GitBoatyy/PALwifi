@@ -17,7 +17,8 @@
     #container { max-width: 1080px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
     h1 { font-weight: 700; }
     #map { width: 100%; height: 600px; border-radius: 12px; border: 1px solid #ddd; margin: 0 auto;}
-    #unitSelect { margin-bottom: 18px; font-size: 1.05em; padding: 4px 12px;}
+    #filters { margin-bottom: 18px; display: flex; gap: 28px; align-items: center; }
+    #registrationSelect { font-size: 1.05em; padding: 4px 12px; }
   </style>
 </head>
 <body>
@@ -29,105 +30,111 @@
   </nav>
   <div id="container">
     <h1>PALwifi Logger Map</h1>
-    <div>
-      <label for="unitSelect">Select Unit:</label>
-      <select id="unitSelect"></select>
+    <div id="filters">
+      <label for="registrationSelect">Registration:</label>
+      <select id="registrationSelect"></select>
+      <label><input type="checkbox" id="onGroundChk" checked> On Ground (DIN2=1)</label>
+      <label><input type="checkbox" id="altChk"> Alt &lt; 2000 ft</label>
     </div>
     <div id="map"></div>
   </div>
   <script>
-    // HARDCODED units
-    const units = [
-      'Palantir',
-      'Palantir2',
-      'Palantir3',
-      'Palantir4',
-      'Palantir5',
-      'Palantir6',
-      'Palantir7'
-    ];
-    const unitSelect = document.getElementById('unitSelect');
-    units.forEach(u => {
-      let opt = document.createElement('option');
-      opt.value = u; opt.text = u;
-      unitSelect.add(opt);
-    });
+    let allPoints = [];
+    let markersLayer = L.layerGroup();
+    let map = L.map('map').setView([54, -100], 5);
 
-
-    // Initialize map
-    let map = L.map('map').setView([49.9, -119.5], 10); // Default to Kelowna area
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    let markersLayer = L.layerGroup().addTo(map);
+    markersLayer.addTo(map);
 
-    function loadAndPlot(unit) {
-      markersLayer.clearLayers();
-      fetch(`data/${unit}_map.json`)
-        .then(resp => resp.json())
-        .then(points => {
-          let first = null;
-          let reds = [];
-          let greens = [];
-    
-          points.forEach(p => {
-            let lat = parseFloat(p.Latitude || p.Lat || p.lat);
-            let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
-            if (!isNaN(lat) && !isNaN(lon)) {
-              if (!first) first = [lat, lon];
-              let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
-              let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
-              let color = (wifi && inet) ? "green" : "red";
-              let reg = p.Registration || p.SSID || '';
-              let popup = `
-                <b>${unit}</b><br>
-                Registration: ${reg}<br>
-                Time: ${p.Date || ''} ${p.Time || ''}<br>
-                SSID: ${p.SSID || ''}<br>
-                Wifi: ${wifi ? "Yes" : "No"}<br>
-                Internet: ${inet ? "Yes" : "No"}<br>
-                Lat: ${lat}<br>
-                Lon: ${lon}
-              `;
-              let markerData = { lat, lon, color, popup };
-              if (color === "green") greens.push(markerData);
-              else reds.push(markerData);
-            }
-          });
-    
-          // Add reds first
-          reds.forEach(({ lat, lon, popup }) => {
-            let marker = L.circleMarker([lat, lon], {
-              radius: 3,
-              fillColor: "red",
-              color: "none",
-              weight: 0,
-              fillOpacity: 0.8
-            }).addTo(markersLayer);
-            marker.bindPopup(popup);
-          });
-    
-          // Add greens after, so they are always on top
-          greens.forEach(({ lat, lon, popup }) => {
-            let marker = L.circleMarker([lat, lon], {
-              radius: 6,
-              fillColor: "green",
-              color: "none",
-              weight: 0,
-              fillOpacity: 0.8
-            }).addTo(markersLayer);
-            marker.bindPopup(popup);
-          });
-    
-          if (first) map.setView(first, 11);
-        });
+    // Load all data and setup dropdown
+    fetch('data/Palantir7_map.json')
+      .then(resp => resp.json())
+      .then(points => {
+        allPoints = Array.isArray(points) ? points : [];
+        updateRegistrationDropdown();
+        plotFiltered();
+      });
+
+    function updateRegistrationDropdown() {
+      let regs = Array.from(new Set(allPoints.map(p => p.Registration || '').filter(Boolean))).sort();
+      let select = document.getElementById('registrationSelect');
+      select.innerHTML = regs.map(reg => `<option value="${reg}">${reg}</option>`).join('');
+      // Optional: auto-select first registration
+      if (regs.length > 0) select.value = regs[0];
     }
 
-    // Initial load
-    loadAndPlot(units[0]);
-    unitSelect.addEventListener('change', ()=> loadAndPlot(unitSelect.value));
+    function plotFiltered() {
+      markersLayer.clearLayers();
+      let registration = document.getElementById('registrationSelect').value;
+      let onGround = document.getElementById('onGroundChk').checked;
+      let altLimit = document.getElementById('altChk').checked;
+
+      let latlngs = [];
+      let reds = [], greens = [];
+
+      allPoints.forEach(p => {
+        if ((registration && p.Registration !== registration)) return;
+        if (onGround && Number(p.DIN2) !== 1) return;
+        if (altLimit && Number(p.Alt || p.ALT || p.alt) >= 2000) return;
+
+        let lat = parseFloat(p.Latitude || p.Lat || p.lat);
+        let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
+        if (isNaN(lat) || isNaN(lon)) return;
+        latlngs.push([lat, lon]);
+        let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
+        let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
+        let color = (wifi && inet) ? "green" : "red";
+        let popup = `
+          <b>Registration:</b> ${p.Registration || ''}<br>
+          Time: ${p.Date || ''} ${p.Time || ''}<br>
+          SSID: ${p.SSID || ''}<br>
+          Wifi: ${wifi ? "Yes" : "No"}<br>
+          Internet: ${inet ? "Yes" : "No"}<br>
+          Lat: ${lat}<br>
+          Lon: ${lon}
+        `;
+        let markerData = { lat, lon, color, popup };
+        if (color === "green") greens.push(markerData);
+        else reds.push(markerData);
+      });
+
+      reds.forEach(({ lat, lon, popup }) => {
+        let marker = L.circleMarker([lat, lon], {
+          radius: 3,
+          fillColor: "red",
+          color: "none",
+          weight: 0,
+          fillOpacity: 0.8
+        }).addTo(markersLayer);
+        marker.bindPopup(popup);
+      });
+      greens.forEach(({ lat, lon, popup }) => {
+        let marker = L.circleMarker([lat, lon], {
+          radius: 6,
+          fillColor: "green",
+          color: "none",
+          weight: 0,
+          fillOpacity: 0.8
+        }).addTo(markersLayer);
+        marker.bindPopup(popup);
+      });
+
+      // Zoom to fit all markers if any
+      if (latlngs.length > 1) {
+        map.fitBounds(latlngs, { padding: [28, 28] });
+      } else if (latlngs.length === 1) {
+        map.setView(latlngs[0], 11);
+      }
+    }
+
+    document.getElementById('registrationSelect').addEventListener('change', plotFiltered);
+    document.getElementById('onGroundChk').addEventListener('change', plotFiltered);
+    document.getElementById('altChk').addEventListener('change', plotFiltered);
+
   </script>
 </body>
 </html>
