@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
-    body { margin:0; background: #fafbfc; }
+    body { font-family: sans-serif; margin: 0; background: #fafbfc;}
     #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
     #navbar a {
       color: #fff; text-decoration: none; margin-right: 18px; font-weight: 600; font-size: 1.1em; padding: 6px 12px;
@@ -22,8 +22,10 @@
 </head>
 <body>
   <nav id="navbar">
-    <a href="index.html" id="nav_dashboard">Dashboard</a>
-    <a href="map.html" class="active" id="nav_map">Map</a>
+    <a href="index.html">Dashboard</a>
+    <a href="map.html" class="active">Wifi Map</a>
+    <a href="visualizer.html">Cell Map</a>
+    <a href="rawdata.html">Raw Data</a>
   </nav>
   <div id="container">
     <h1>PALwifi Logger Map</h1>
@@ -51,12 +53,6 @@
       unitSelect.add(opt);
     });
 
-    // NAVBAR logic
-    document.getElementById('nav_dashboard').onclick = ()=>{window.location='index.html';};
-    document.getElementById('nav_map').onclick = (e)=>{
-      e.preventDefault();
-      // Already on map, do nothing
-    };
 
     // Initialize map
     let map = L.map('map').setView([49.9, -119.5], 10); // Default to Kelowna area
