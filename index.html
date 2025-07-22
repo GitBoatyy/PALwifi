@@ -27,8 +27,10 @@
 </head>
 <body>
   <nav id="navbar">
-    <a href="index.html" class="active" id="nav_dashboard">Dashboard</a>
-    <a href="map.html" id="nav_map">Map</a>
+    <a href="index.html" class="active">Dashboard</a>
+    <a href="map.html">Wifi Map</a>
+    <a href="visualizer.html">Cell Map</a>
+    <a href="rawdata.html">Raw Data</a>
   </nav>
   <div id="container">
     <!-- Dashboard Section -->
@@ -80,9 +82,6 @@
       window.location = "map.html";
     }
   }
-  document.getElementById('nav_dashboard').onclick = function(e){e.preventDefault();setActiveNav("dashboard");};
-  document.getElementById('nav_map').onclick = function(e){e.preventDefault();setActiveNav("map");};
-  setActiveNav("dashboard");
 
   // Units (update if you add/remove)
   const units = [
