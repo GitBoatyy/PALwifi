@@ -568,7 +568,9 @@ let byDay = {};
       if(currentCallsigns[0] === "__ALL__" || currentCallsigns.length === 0) btn.textContent = "All Callsigns ▼";
       else if(currentCallsigns.length === 1) btn.textContent = currentCallsigns[0] + " ▼";
       else btn.textContent = currentCallsigns.length + " selected ▼";
-
+      gtag('event', 'callsign_filter', {
+        selection: currentCallsigns[0] === '__ALL__' ? 'ALL' : currentCallsigns.join(',')
+      });
       doRedraw();
     }
     function filterByEquip(data) {
@@ -617,11 +619,21 @@ let byDay = {};
       menu.addEventListener('click', e=>e.stopPropagation());
       document.getElementById('includeNetFix').addEventListener('change', function(e){
         includeNetFix = this.checked;
+        gtag('event', 'filter_change', {
+          filter: 'includeNetFix',
+          value: includeNetFix ? 'on' : 'off'
+        });
         doRedraw();
       });
       // Sort controls
-      document.getElementById('geonameSort').addEventListener('change', doRedraw);
-      document.getElementById('callsignSort').addEventListener('change', doRedraw);
+      document.getElementById('geonameSort').addEventListener('change', function(){
+        gtag('event', 'sort_change', { chart: 'city', mode: this.value });
+        doRedraw();
+      });
+      document.getElementById('callsignSort').addEventListener('change', function(){
+        gtag('event', 'sort_change', { chart: 'callsign', mode: this.value });
+        doRedraw();
+      });
       document.getElementById('modFilter').addEventListener('change', function () {
         selectedModFilter = this.value; 
         doRedraw();
