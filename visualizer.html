@@ -90,6 +90,19 @@
         <button id="callsignBtn" type="button">All Callsigns ▼</button>
         <div id="callsignMenu"></div>
       </div>
+      <label for="modFilter">Mod status:</label>
+      <select id="modFilter">
+        <option value="ALL" selected>All</option>
+        <option value="MOD_E">MOD E (YYR)</option>
+        <option value="NON_MOD">Non-Mod</option>
+      </select>
+
+      <label for="simFilter">SIM:</label>
+      <select id="simFilter">
+        <option value="ALL" selected>All</option>
+        <option value="TELUS">TELUS</option>
+        <option value="GIGSKY">GigSky</option>
+      </select>
       <div id="netFixBox">
         <input type="checkbox" id="includeNetFix" style="transform: scale(1.18);" checked>
         <label for="includeNetFix" style="font-weight:600;cursor:pointer;">Include Net Connected</label>
@@ -158,6 +171,14 @@
 
     const status0Label = 'No Cell';
     const status1Label = 'Has Cell';
+    // Callsign → SIM and Mod status mappings (uppercased keys)
+    const TELUS_CALLSIGNS = new Set(["C-GVPA","C-GPAU","C-GXNL","C-GYYR"]);
+    const MOD_E_CALLSIGNS  = new Set(["C-GYYR"]);       // only YYR is MOD E
+    // Everyone not in MOD_E_CALLSIGNS is treated as NON_MOD
+
+    function getCallsignVal(row) {
+      return (row.callsign || row.Callsign || "UNKNOWN").toString().trim().toUpperCase();
+    }
 
     // Date parsing (robust, accepts csv date/time string)
     function parseCSVDate(dstr) {
@@ -251,7 +272,9 @@
       return `<svg width="${r*2}" height="${r*2}"><path d="${d1}" fill="#1bc541"/><path d="${d0}" fill="#e83a3a"/></svg>`;
     }
 
-    let map, markerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart, allData = [], currentCallsigns = ["__ALL__"], includeNetFix = true;
+    let map, markerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
+        allData = [], currentCallsigns = ["__ALL__"], includeNetFix = false,
+        selectedModFilter = "ALL", selectedSIMFilter = "ALL";
 
     function sortAgg(keys, agg, mode) {
       // mode: total_desc | nocell_desc | hascell_desc
@@ -398,25 +421,46 @@
       }
 
       // New chart 1: Daily No Cell %
-      let byDay = {};
-      filteredData.forEach(row=>{
-        let speed = parseFloat(row["speed"] || row["Speed"] || "0");
-        if (isNaN(speed) || speed > 1) return;
-        let dataval = (row.data || row.Data || "").trim();
-        if (!dataval.startsWith("Cell status:")) return;
-        let cs = row.callsign || row.Callsign || "Unknown";
-        if(currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return;
-        let dateStr = (row.PosnDate || row.posndate || "").slice(0,10);
-        if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
-        if(!byDay[dateStr]) byDay[dateStr] = {count0:0, count1:0};
-        if (dataval === "Cell status: 0") byDay[dateStr].count0++;
-        else if (dataval === "Cell status: 1") byDay[dateStr].count1++;
-      });
-      let dayKeys = Object.keys(byDay).sort(); // chronological
-      let dayPct = dayKeys.map(d=>{
-        let o = byDay[d], t = o.count0 + o.count1;
-        return t ? Math.round((o.count0/t)*1000)/10 : 0; // one decimal
-      });
+// New chart 1: Daily No Cell %
+let byDay = {};
+  filteredData.forEach(row=>{
+    let speed = parseFloat(row["speed"] || row["Speed"] || "0");
+    if (isNaN(speed) || speed > 1) return;
+    let dataval = (row.data || row.Data || "").trim();
+    if (!dataval.startsWith("Cell status:")) return;
+    let cs = row.callsign || row.Callsign || "Unknown";
+    if (currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return;
+    let dateStr = (row.PosnDate || row.posndate || "").slice(0,10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+    if (!byDay[dateStr]) byDay[dateStr] = {count0:0, count1:0};
+    if (dataval === "Cell status: 0") byDay[dateStr].count0++;
+    else if (dataval === "Cell status: 1") byDay[dateStr].count1++;
+  });
+  let dayKeys = Object.keys(byDay).sort(); // chronological
+  let dayPct = dayKeys.map(d=>{
+    let o = byDay[d], t = o.count0 + o.count1;
+    return t ? Math.round((o.count0/t)*1000)/10 : 0; // one decimal
+  });
+
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  const endStr = (document.getElementById('endDate').value || '').slice(0,10);
+  if (endStr === todayStr && dayKeys.length && dayKeys[dayKeys.length - 1] === todayStr) {
+    dayKeys.pop();
+    dayPct.pop();
+  }
+
+
+  if (dailyPctChart) dailyPctChart.destroy();
+  dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
+    type: 'line',
+    data: { labels: dayKeys, datasets: [{ label: '% No Cell', data: dayPct, tension: 0.3 }]},
+    options: {
+      responsive: true,
+      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
+    }
+  });
+
       if (dailyPctChart) dailyPctChart.destroy();
       dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
         type: 'line',
@@ -518,11 +562,33 @@
 
       doRedraw();
     }
+    function filterByEquip(data) {
+      return data.filter(row => {
+        const cs = getCallsignVal(row);
+
+        // SIM filter
+        if (selectedSIMFilter === "TELUS" && !TELUS_CALLSIGNS.has(cs)) return false;
+        if (selectedSIMFilter === "GIGSKY" && TELUS_CALLSIGNS.has(cs)) return false;
+
+        // Mod filter
+        const isModE = MOD_E_CALLSIGNS.has(cs);
+        if (selectedModFilter === "MOD_E" && !isModE) return false;
+        if (selectedModFilter === "NON_MOD" && isModE) return false;
+
+        // Callsign multiselect (existing logic)
+        if (currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return false;
+
+        return true;
+      });
+    }
+
     
     function doRedraw() {
       let start = document.getElementById('startDate').value;
-      let end = document.getElementById('endDate').value;
-      redraw(filterByDate(allData, start, end));
+      let end   = document.getElementById('endDate').value;
+      let dateFiltered = filterByDate(allData, start, end);
+      let equipFiltered = filterByEquip(dateFiltered);   // NEW
+      redraw(equipFiltered);
     }
 
     document.addEventListener('DOMContentLoaded', ()=>{
@@ -547,6 +613,14 @@
       // Sort controls
       document.getElementById('geonameSort').addEventListener('change', doRedraw);
       document.getElementById('callsignSort').addEventListener('change', doRedraw);
+      document.getElementById('modFilter').addEventListener('change', function () {
+        selectedModFilter = this.value; 
+        doRedraw();
+      });
+      document.getElementById('simFilter').addEventListener('change', function () {
+        selectedSIMFilter = this.value; 
+        doRedraw();
+      });
     });
 
     fetch('data/master_results.csv')
