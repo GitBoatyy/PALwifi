@@ -62,6 +62,24 @@
       border-radius: 7px; box-shadow: 0 2px 8px #0002;
       font-size: 0.98em; padding: 12px 15px; pointer-events: none;
     }
+    #locationDropdown { position: relative; display: inline-block; }
+    #locationBtn {
+      background: #fff; border: 1px solid #aaa; border-radius: 6px; font-size: 1em; padding: 5px 14px;
+      min-width: 150px; cursor: pointer; text-align: left;
+    }
+    #locationMenu {
+      display: none; position: absolute; left: 0; top: 110%;
+      background: #fff; border: 1px solid #aaa; border-radius: 8px; box-shadow: 0 2px 12px #0002;
+      z-index: 1000; padding: 10px 0; min-width: 220px;
+      max-height: 320px; overflow-y: auto;
+      transition: opacity 0.15s;
+    }
+    #locationMenu label {
+      display: block; padding: 4px 18px; font-size: 1em; cursor: pointer;
+      user-select: none;
+    }
+    #locationMenu label:hover { background: #f0f7ff; }
+
     .info-icon:hover .info-tooltip,
     .info-icon:focus .info-tooltip { display: block; pointer-events: auto;}
     .chart-header { display:flex; align-items:center; gap:10px; justify-content: space-between; flex-wrap: wrap;}
@@ -85,7 +103,7 @@
       PAL FLEET CELLULAR MAP
       <span class="info-icon" tabindex="0">i
         <span class="info-tooltip">
-          AC GVPA, GPAU, GXNL, GPNE all have TELUS SIM cards installed after July 17th (current year).
+          AC GVPA, GPAU, GXNL, GPNE Telus SIM cards Jul 17. YYR New Modem Jul 1, POE New Modem Aug 25 
         </span>
       </span>
     </h1>
@@ -112,6 +130,10 @@
         <option value="TELUS">TELUS</option>
         <option value="GIGSKY">GigSky</option>
       </select>
+      <div id="locationDropdown">
+        <button id="locationBtn" type="button">All Locations ▼</button>
+        <div id="locationMenu"></div>
+      </div>
       <div id="netFixBox">
         <input type="checkbox" id="includeNetFix" style="transform: scale(1.18);" checked>
         <label for="includeNetFix" style="font-weight:600;cursor:pointer;">Include Net Connected</label>
@@ -182,9 +204,9 @@
     const status1Label = 'Has Cell';
     // Callsign → SIM and Mod status mappings (uppercased keys)
     const TELUS_CALLSIGNS = new Set(["C-GVPA","C-GPAU","C-GXNL", "C-GPNE"]);
-    const MOD_E_CALLSIGNS  = new Set(["C-GYYR"]);       // only YYR is MOD E
+    const MOD_E_CALLSIGNS  = new Set(["C-GYYR", "C-POE"]);       // only YYR is MOD E
     // Everyone not in MOD_E_CALLSIGNS is treated as NON_MOD
-
+    let currentLocations = ["__ALL__"];
     function getCallsignVal(row) {
       return (row.callsign || row.Callsign || "UNKNOWN").toString().trim().toUpperCase();
     }
@@ -254,6 +276,7 @@
       "Gaspe": "Gaspe", "Churchill Falls": "Churchill Falls", "Greenwood": "Greenwood", "Trois-Rivieres": "Trois-Rivieres",
       "Lourdes-de-Blanc-Sablon": "Lourdes-de-Blanc-Sablon", "Nain": "Nain", "Iles-de-la-Madeleine": "Iles-de-la-Madeleine", "Sydney": "Sydney"
     };
+    
     function canonicalGeoname(geo) { return geonameAliases[geo] || geo; }
 
     function parseCSV(csv) {
@@ -586,13 +609,40 @@ let byDay = {};
         if (selectedModFilter === "MOD_E" && !isModE) return false;
         if (selectedModFilter === "NON_MOD" && isModE) return false;
 
+        // Location filter
+        let geo = canonicalGeoname(row.geoname || row.Geoname || "Unknown");
+        if (currentLocations.length > 0 && !currentLocations.includes(geo)) return false;
+
         // Callsign multiselect (existing logic)
         if (currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return false;
 
         return true;
       });
     }
+    function updateLocationDropdown(allData) {
+      let locs = Array.from(new Set(
+        allData.map(r => canonicalGeoname(r.geoname || r.Geoname || "Unknown"))
+      )).filter(v => v && v !== "Unknown").sort();
 
+      // These are the ones to *not* check by default
+      const defaultDeselected = new Set(["Nain", "Schefferville", "Iqaluit"]);
+
+      const menu = document.getElementById('locationMenu');
+      menu.innerHTML = locs.map(l =>
+        `<label><input type="checkbox" value="${l.replace(/"/g, '&quot;')}" ${defaultDeselected.has(l) ? "" : "checked"}> ${l}</label>`
+      ).join('');
+
+      // Track selections (exclude deselected ones by default)
+      currentLocations = locs.filter(l => !defaultDeselected.has(l));
+
+      menu.querySelectorAll('input[type=checkbox]').forEach(chk => {
+        chk.addEventListener('change', onLocationFilterChange);
+      });
+
+      // Set button label
+      document.getElementById('locationBtn').textContent = 
+        currentLocations.length === locs.length ? "All Locations ▼" : currentLocations.length + " selected ▼";
+    }
     
     function doRedraw() {
       let start = document.getElementById('startDate').value;
@@ -643,19 +693,58 @@ let byDay = {};
         doRedraw();
       });
     });
+    function onLocationFilterChange() {
+      const menu = document.getElementById('locationMenu');
+      let checked = Array.from(menu.querySelectorAll('input[type=checkbox]'))
+                        .filter(b => b.checked)
+                        .map(b => b.value);
+
+      currentLocations = checked;
+
+      let btn = document.getElementById('locationBtn');
+      if (currentLocations.length === 0) {
+        btn.textContent = "No Locations ▼";
+      } else if (currentLocations.length === 1) {
+        btn.textContent = currentLocations[0] + " ▼";
+      } else if (currentLocations.length === menu.querySelectorAll('input[type=checkbox]').length) {
+        btn.textContent = "All Locations ▼";
+      } else {
+        btn.textContent = currentLocations.length + " selected ▼";
+      }
+
+      doRedraw();
+    }
+
+
+    const locBtn = document.getElementById('locationBtn');
+    const locMenu = document.getElementById('locationMenu');
+    locBtn.addEventListener('click', e=>{
+      e.stopPropagation();
+      locMenu.style.display = (locMenu.style.display === 'block') ? 'none' : 'block';
+      locMenu.style.opacity = (locMenu.style.display === 'block') ? '1' : '0';
+    });
+    document.addEventListener('click', ()=>{
+      if(locMenu.style.display === 'block') {
+        locMenu.style.display = 'none'; locMenu.style.opacity = '0';
+        doRedraw();
+      }
+    });
+    locMenu.addEventListener('click', e=>e.stopPropagation());
+
 
     fetch('data/master_results.csv')
       .then(resp => resp.text())
       .then(csv => {
         allData = parseCSV(csv);
         let allDates = allData
+        
         .map(row => {
             let val = row.PosnDate || row.posndate || "";
             let m = val.match(/(\d{4}-\d{2}-\d{2})/);
             return m ? m[1] : null;
         })
         .filter(Boolean);
-
+        updateLocationDropdown(allData);
         let minDate = allDates.length ? allDates.reduce((a, b) => a < b ? a : b) : '';
         let maxDate = allDates.length ? allDates.reduce((a, b) => a > b ? a : b) : '';
 
