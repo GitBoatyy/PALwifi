@@ -98,6 +98,10 @@
     <a href="visualizer.html" class="active">Cell Map</a>
     <a href="rawdata.html">Raw Data</a>
   </nav>
+
+<script type="text/javascript" 
+        src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit">
+</script>
   <div id="container">
     <h1>
       PAL FLEET CELLULAR MAP
@@ -120,7 +124,7 @@
       <label for="modFilter">Mod status:</label>
       <select id="modFilter">
         <option value="ALL" selected>All</option>
-        <option value="MOD_E">MOD E (YYR)</option>
+        <option value="MOD_E">MOD E (YYR and POE)</option>
         <option value="NON_MOD">Non-Mod</option>
       </select>
 
@@ -181,6 +185,16 @@
         <canvas id="callsignChart"></canvas>
       </div>
     </div>
+      <div id="google_translate_element"></div>
+
+      <script type="text/javascript">
+        function googleTranslateElementInit() {
+          new google.translate.TranslateElement(
+            {pageLanguage: 'en'},
+            'google_translate_element'
+          );
+        }
+      </script>
 
     <!-- New charts row -->
     <div class="flexrow" style="margin-top:28px;">
@@ -193,7 +207,7 @@
         <canvas id="callsignPctChart"></canvas>
       </div>
     </div>
-  </div>
+
   <script>
     // Navbar highlight logic
     document.querySelectorAll('#navbar a').forEach(a=>{
