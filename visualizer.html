@@ -107,7 +107,7 @@
       PAL FLEET CELLULAR MAP
       <span class="info-icon" tabindex="0">i
         <span class="info-tooltip">
-          AC GVPA, GPAU, GXNL, GPNE Telus SIM cards Jul 17. YYR New Modem Jul 1, POE New Modem Aug 25 
+          AC GVPA, GPAU, GXNL, GPNE Telus SIM cards Jul 17. YYR New Modem Jul 1, POE New Modem Aug 25, PVJ and PFI New Modem Sep 10 
         </span>
       </span>
     </h1>
@@ -218,7 +218,7 @@
     const status1Label = 'Has Cell';
     // Callsign → SIM and Mod status mappings (uppercased keys)
     const TELUS_CALLSIGNS = new Set(["C-GVPA","C-GPAU","C-GXNL", "C-GPNE"]);
-    const MOD_E_CALLSIGNS  = new Set(["C-GYYR", "C-GPOE"]);       // only YYR is MOD E
+    const MOD_E_CALLSIGNS  = new Set(["C-GYYR", "C-GPOE", "C-GPFI", "C-FPVJ"]);
     // Everyone not in MOD_E_CALLSIGNS is treated as NON_MOD
     let currentLocations = ["__ALL__"];
     function getCallsignVal(row) {
