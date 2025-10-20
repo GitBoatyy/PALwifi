@@ -2,19 +2,23 @@
 <html>
 <head>
   <meta charset="utf-8">
-    <!-- Google tag (gtag.js) -->
+  <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-L9R9EKK20K"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-
     gtag('config', 'G-L9R9EKK20K');
   </script>
   <title>PALwifi Map View</title>
+
   <!-- Leaflet CDN -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <!-- Papa Parse for CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
   <style>
     body { font-family: sans-serif; margin: 0; background: #fafbfc;}
     #navbar { background: #164778; color: #fff; padding: 0 24px; height: 48px; display: flex; align-items: center; }
@@ -26,7 +30,7 @@
     #container { max-width: 1080px; margin: 32px auto; background: #fff; padding: 24px 32px; border-radius: 12px; box-shadow: 0 2px 6px #0001; }
     h1 { font-weight: 700; }
     #map { width: 100%; height: 600px; border-radius: 12px; border: 1px solid #ddd; margin: 0 auto;}
-    #filters { margin-bottom: 18px; display: flex; gap: 28px; align-items: center; }
+    #filters { margin-bottom: 18px; display: flex; gap: 28px; align-items: center; flex-wrap: wrap;}
     #registrationSelect { font-size: 1.05em; padding: 4px 12px; }
   </style>
 </head>
@@ -47,6 +51,7 @@
     </div>
     <div id="map"></div>
   </div>
+
   <script>
     let allPoints = [];
     let markersLayer = L.layerGroup();
@@ -59,20 +64,21 @@
 
     markersLayer.addTo(map);
 
-    // Load all data and setup dropdown
-    fetch('data/Palantir7_map.json')
-      .then(resp => resp.json())
-      .then(points => {
-        allPoints = Array.isArray(points) ? points : [];
+    // Load CSV data
+    Papa.parse('data/Palantir7_map.csv', {
+      download: true,
+      header: true,
+      complete: function(results) {
+        allPoints = results.data;
         updateRegistrationDropdown();
         plotFiltered();
-      });
+      }
+    });
 
     function updateRegistrationDropdown() {
       let regs = Array.from(new Set(allPoints.map(p => p.Registration || '').filter(Boolean))).sort();
       let select = document.getElementById('registrationSelect');
       select.innerHTML = regs.map(reg => `<option value="${reg}">${reg}</option>`).join('');
-      // Optional: auto-select first registration
       if (regs.length > 0) select.value = regs[0];
     }
 
@@ -93,7 +99,9 @@
         let lat = parseFloat(p.Latitude || p.Lat || p.lat);
         let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
         if (isNaN(lat) || isNaN(lon)) return;
+
         latlngs.push([lat, lon]);
+
         let wifi = (p.Wifi ?? p.WIFI ?? p.wifi) == 1 ? 1 : 0;
         let inet = (p.Int ?? p.INT ?? p.int) == 1 ? 1 : 0;
         let color = (wifi && inet) ? "green" : "red";
@@ -121,6 +129,7 @@
         }).addTo(markersLayer);
         marker.bindPopup(popup);
       });
+
       greens.forEach(({ lat, lon, popup }) => {
         let marker = L.circleMarker([lat, lon], {
           radius: 6,
@@ -132,7 +141,6 @@
         marker.bindPopup(popup);
       });
 
-      // Zoom to fit all markers if any
       if (latlngs.length > 1) {
         map.fitBounds(latlngs, { padding: [28, 28] });
       } else if (latlngs.length === 1) {
@@ -143,7 +151,6 @@
     document.getElementById('registrationSelect').addEventListener('change', plotFiltered);
     document.getElementById('onGroundChk').addEventListener('change', plotFiltered);
     document.getElementById('altChk').addEventListener('change', plotFiltered);
-
   </script>
 </body>
 </html>
