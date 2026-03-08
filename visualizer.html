@@ -203,7 +203,7 @@
     <div class="flexrow" style="margin-top:28px;">
       <div>
         <div class="chart-header">
-          <h3 id="pctChartTitle">No Cell % by Month</h3>
+          <h3 id="pctChartTitle">Cellular Connectivity %</h3>
           <div id="granToggle" class="epoch-toggle" title="Data point density">
             <span class="epoch-label" id="monthLabel">Monthly</span>
             <input type="range" id="granSlider" min="0" max="1" step="1" value="0" aria-label="Monthly/Weekly granularity" />
@@ -491,8 +491,8 @@ let byDay = {};
     let dateStr = (row.PosnDate || row.posndate || "").slice(0,10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
     if (!byDay[dateStr]) byDay[dateStr] = {count0:0, count1:0};
-    if (dataval === "Cell status: 0") byDay[dateStr].count0++;
-    else if (dataval === "Cell status: 1") byDay[dateStr].count1++;
+    if (dataval === "Cell status: 0") byDay[dateStr].count1++;
+    else if (dataval === "Cell status: 1") byDay[dateStr].count0++;
   });
   let dayKeys = Object.keys(byDay).sort(); // chronological
 
@@ -545,14 +545,14 @@ let byDay = {};
   const useLabels = (mode === "week") ? weekKeys : monthKeys;
   const useData   = (mode === "week") ? weekPct  : monthPct;
   const titleEl = document.getElementById("pctChartTitle");
-  if (titleEl) titleEl.textContent = (mode === "week") ? "No Cell % by Week" : "No Cell % by Month";
+  if (titleEl) titleEl.textContent = (mode === "week") ? "Cell % by Week" : "Cell % by Month";
   if (dailyPctChart) dailyPctChart.destroy();
   dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
     type: 'line',
-    data: { labels: useLabels, datasets: [{ label: '% No Cell', data: useData, tension: 0.3 }]},
+    data: { labels: useLabels, datasets: [{ label: 'Cellular Connectivity %', data: useData, tension: 0.3 }]},
     options: {
       responsive: true,
-      scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
+      scales: { y: { min:50, max: 100, ticks: { callback: (v)=> v + '%' } } }
     }
   });
 
@@ -569,7 +569,7 @@ let byDay = {};
         type: 'bar',
         data: {
           labels: csPctArr.map(x=>x.k),
-          datasets: [{ label: '% No Cell', data: csPctArr.map(x=> Math.round(x.pct*1000)/10) }]
+          datasets: [{ label: 'Cellular Connectivity %', data: csPctArr.map(x=> Math.round(x.pct*1000)/10) }]
         },
         options: {
           responsive: true,
@@ -762,6 +762,8 @@ let byDay = {};
         selectedSIMFilter = this.value; 
         doRedraw();
       });
+      document.getElementById("granSlider").addEventListener("input", doRedraw);
+
     });
     function onLocationFilterChange() {
       const menu = document.getElementById('locationMenu');
