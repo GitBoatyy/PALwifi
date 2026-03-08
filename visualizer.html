@@ -28,6 +28,13 @@
     #datefilter { margin: 10px 0 16px 0; display: flex; gap: 18px; align-items: center; flex-wrap: wrap;}
     #datefilter label { font-weight: 600;}
     #callsignDropdown { position: relative; display: inline-block;}
+    /* Pre/Post mod slider */
+    .epoch-toggle { display: inline-flex; align-items: center; gap: 8px; padding-left: 10px; border-left: 1px solid #e2e2e2; }
+     
+    .epoch-toggle input[type=range] { width: 40px; accent-color: #164778; cursor: pointer; }
+
+    .epoch-toggle .epoch-label { font-weight: 600; color: #164778; cursor: pointer; user-select: none; font-size: 0.95em; }
+    .epoch-toggle .epoch-label.muted { opacity: 0.55; font-weight: 500; }
     #callsignBtn {
       background: #fff; border: 1px solid #aaa; border-radius: 6px; font-size: 1em; padding: 5px 14px;
       min-width: 150px; cursor: pointer; text-align: left;
@@ -99,15 +106,12 @@
     <a href="rawdata.html">Raw Data</a>
   </nav>
 
-<script type="text/javascript" 
-        src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit">
-</script>
   <div id="container">
     <h1>
       PAL FLEET CELLULAR MAP
       <span class="info-icon" tabindex="0">i
         <span class="info-tooltip">
-          AC GVPA, GPAU, GXNL, GPNE Telus SIM cards Jul 17. YYR New Modem Jul 1, POE New Modem Aug 25, PVJ and PFI New Modem Sep 10 
+          All AC new modem Feb 20. Bell SIM in YYR. 
         </span>
       </span>
     </h1>
@@ -117,21 +121,20 @@
       <label for="endDate">End date:</label>
       <input type="date" id="endDate">
       <button id="resetDates">Show All</button>
+      <div id="epochToggle" class="epoch-toggle" title="Quick date presets">
+        <span class="epoch-label" id="preModLabel">Pre mod</span>
+        <input type="range" id="epochSlider" min="0" max="1" step="1" value="0" aria-label="Pre/Post modification date range" />
+        <span class="epoch-label" id="postModLabel">Post mod</span>
+      </div>
       <div id="callsignDropdown">
         <button id="callsignBtn" type="button">All Callsigns ▼</button>
         <div id="callsignMenu"></div>
       </div>
-      <label for="modFilter">Mod status:</label>
-      <select id="modFilter">
-        <option value="ALL" selected>All</option>
-        <option value="MOD_E">MOD E (YYR and POE)</option>
-        <option value="NON_MOD">Non-Mod</option>
-      </select>
 
       <label for="simFilter">SIM:</label>
       <select id="simFilter">
         <option value="ALL" selected>All</option>
-        <option value="TELUS">TELUS</option>
+        <option value="TELUS">Bell</option>
         <option value="GIGSKY">GigSky</option>
       </select>
       <div id="locationDropdown">
@@ -199,7 +202,14 @@
     <!-- New charts row -->
     <div class="flexrow" style="margin-top:28px;">
       <div>
-        <h3>No Cell % by Day</h3>
+        <div class="chart-header">
+          <h3 id="pctChartTitle">No Cell % by Month</h3>
+          <div id="granToggle" class="epoch-toggle" title="Data point density">
+            <span class="epoch-label" id="monthLabel">Monthly</span>
+            <input type="range" id="granSlider" min="0" max="1" step="1" value="0" aria-label="Monthly/Weekly granularity" />
+            <span class="epoch-label" id="weekLabel">Weekly</span>
+          </div>
+        </div>
         <canvas id="dailyPctChart"></canvas>
       </div>
       <div>
@@ -217,7 +227,7 @@
     const status0Label = 'No Cell';
     const status1Label = 'Has Cell';
     // Callsign → SIM and Mod status mappings (uppercased keys)
-    const TELUS_CALLSIGNS = new Set(["C-GVPA","C-GPAU","C-GXNL", "C-GPNE"]);
+    const TELUS_CALLSIGNS = new Set(["C-GYYR"]);
     const MOD_E_CALLSIGNS  = new Set(["C-GYYR", "C-GPOE", "C-GPFI", "C-FPVJ"]);
     // Everyone not in MOD_E_CALLSIGNS is treated as NON_MOD
     let currentLocations = ["__ALL__"];
@@ -259,7 +269,7 @@
           let ev = arr[i];
           if (ev.type !== "cell0") continue;
           for (let j = i + 1; j < arr.length; ++j) {
-            if (arr[j].date - ev.date > 10*60*1000) break;
+            if (arr[j].date - ev.date > 45*60*1000) break;
             if (arr[j].type === "netok") {
               toUpgrade.add(ev.idx);
               break;
@@ -319,10 +329,12 @@
     }
 
     let map, markerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
-        allData = [], currentCallsigns = ["__ALL__"], includeNetFix = false,
+        allData = [], currentCallsigns = ["__ALL__"], includeNetFix = true,
         selectedModFilter = "ALL", selectedSIMFilter = "ALL";
 
+        let pctGranularity = "month";
     function sortAgg(keys, agg, mode) {
+
       // mode: total_desc | nocell_desc | hascell_desc
       return keys.sort((a,b)=>{
         const A0 = agg[a].count0, A1 = agg[a].count1;
@@ -471,7 +483,7 @@
 let byDay = {};
   filteredData.forEach(row=>{
     let speed = parseFloat(row["speed"] || row["Speed"] || "0");
-    if (isNaN(speed) || speed > 1) return;
+    if (isNaN(speed) || speed > 1) return; // stationary only
     let dataval = (row.data || row.Data || "").trim();
     if (!dataval.startsWith("Cell status:")) return;
     let cs = row.callsign || row.Callsign || "Unknown";
@@ -483,39 +495,68 @@ let byDay = {};
     else if (dataval === "Cell status: 1") byDay[dateStr].count1++;
   });
   let dayKeys = Object.keys(byDay).sort(); // chronological
-  let dayPct = dayKeys.map(d=>{
-    let o = byDay[d], t = o.count0 + o.count1;
+
+  // Aggregate to months for smoothing
+  let byMonth = {};
+  dayKeys.forEach(d => {
+    const m = d.slice(0,7);
+    const o = byDay[d];
+    if (!byMonth[m]) byMonth[m] = {count0:0, count1:0};
+    byMonth[m].count0 += o.count0; byMonth[m].count1 += o.count1;
+  });
+  let monthKeys = Object.keys(byMonth).sort();
+  let monthPct = monthKeys.map(m => {
+    let o = byMonth[m], t = o.count0 + o.count1;
     return t ? Math.round((o.count0/t)*1000)/10 : 0; // one decimal
   });
-
-
+  // Weekly aggregation (Monday-week)
+  function weekStartStr(dstr){
+    const d = new Date(dstr+"T00:00:00");
+    const dow = d.getDay(); // 0=Sun..6=Sat
+    const offset = (dow + 6) % 7; // days since Monday
+    d.setDate(d.getDate() - offset);
+    return d.toISOString().slice(0,10);
+  }
+  let byWeek = {};
+  dayKeys.forEach(d => {
+    const ws = weekStartStr(d);
+    const o = byDay[d];
+    if (!byWeek[ws]) byWeek[ws] = {count0:0, count1:0};
+    byWeek[ws].count0 += o.count0; byWeek[ws].count1 += o.count1;
+  });
+  let weekKeys = Object.keys(byWeek).sort();
+  let weekPct = weekKeys.map(w => {
+    let o = byWeek[w], t = o.count0 + o.count1;
+    return t ? Math.round((o.count0/t)*1000)/10 : 0;
+  });
+  // Trim incomplete current period if end date is today
   const todayStr = new Date().toISOString().slice(0,10);
   const endStr = (document.getElementById('endDate').value || '').slice(0,10);
-  if (endStr === todayStr && dayKeys.length && dayKeys[dayKeys.length - 1] === todayStr) {
-    dayKeys.pop();
-    dayPct.pop();
+  if (endStr === todayStr) {
+    const todayMonth = todayStr.slice(0,7);
+    const todayWeek = weekStartStr(todayStr);
+    if (monthKeys.length && monthKeys[monthKeys.length-1] === todayMonth) { monthKeys.pop(); monthPct.pop(); }
+    if (weekKeys.length && weekKeys[weekKeys.length-1] === todayWeek) { weekKeys.pop(); weekPct.pop(); }
   }
-
-
+  // Select labels/data per current granularity
+  // Select labels/data per current granularity
+  const gCtl = document.getElementById("granSlider");
+  const mode = (gCtl && gCtl.value === "1") ? "week" : "month";
+  const useLabels = (mode === "week") ? weekKeys : monthKeys;
+  const useData   = (mode === "week") ? weekPct  : monthPct;
+  const titleEl = document.getElementById("pctChartTitle");
+  if (titleEl) titleEl.textContent = (mode === "week") ? "No Cell % by Week" : "No Cell % by Month";
   if (dailyPctChart) dailyPctChart.destroy();
   dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
     type: 'line',
-    data: { labels: dayKeys, datasets: [{ label: '% No Cell', data: dayPct, tension: 0.3 }]},
+    data: { labels: useLabels, datasets: [{ label: '% No Cell', data: useData, tension: 0.3 }]},
     options: {
       responsive: true,
       scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
     }
   });
 
-      if (dailyPctChart) dailyPctChart.destroy();
-      dailyPctChart = new Chart(document.getElementById('dailyPctChart'), {
-        type: 'line',
-        data: { labels: dayKeys, datasets: [{ label: '% No Cell', data: dayPct, tension: 0.3 }]},
-        options: {
-          responsive: true,
-          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
-        }
-      });
+  // If viewing through today, drop the current month (incomplete)
 
       // New chart 2: Top 10 Callsigns by No Cell % (min 5 events)
       let csPctArr = callsignKeys.map(k=>{
@@ -639,7 +680,7 @@ let byDay = {};
       )).filter(v => v && v !== "Unknown").sort();
 
       // These are the ones to *not* check by default
-      const defaultDeselected = new Set(["Nain", "Schefferville", "Iqaluit"]);
+      const defaultDeselected = new Set(["Nain", "Schefferville", "Iqaluit", "Deer Lake", "Goose Bay", "Gander", "Gander Intl", "Churchill Falls", "Wabush", "Sept-Iles", "Gaspe", "Iles-de-la-Madeleine", "Lourdes-de-Blanc-Sablon", ""]);
 
       const menu = document.getElementById('locationMenu');
       menu.innerHTML = locs.map(l =>
@@ -673,6 +714,21 @@ let byDay = {};
         e.stopPropagation();
         menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
         menu.style.opacity = (menu.style.display === 'block') ? '1' : '0';
+      // Granularity toggle (Monthly/Weekly)
+      (function(){
+        const gSlider = document.getElementById("granSlider");
+        const mLbl = document.getElementById("monthLabel");
+        const wLbl = document.getElementById("weekLabel");
+        function syncLabels(){ if(!gSlider||!mLbl||!wLbl) return; if(gSlider.value==="0"){ mLbl.classList.remove("muted"); wLbl.classList.add("muted"); } else { wLbl.classList.remove("muted"); mLbl.classList.add("muted"); } }
+        function setGran(v){ pctGranularity = (v===0?"month":"week"); syncLabels(); try { gtag("event","granularity_change", { granularity: pctGranularity }); } catch(e){} doRedraw(); }
+        if (gSlider) {
+          gSlider.value = (pctGranularity === "week") ? "1" : "0";
+          gSlider.addEventListener("click", (e)=>{ e.preventDefault(); const val = gSlider.value === "0" ? 1 : 0; gSlider.value = String(val); setGran(val); });
+        }
+        if (mLbl) { mLbl.addEventListener("click", ()=>{ if(gSlider) gSlider.value = "0"; setGran(0); }); }
+        if (wLbl) { wLbl.addEventListener("click", ()=>{ if(gSlider) gSlider.value = "1"; setGran(1); }); }
+        syncLabels();
+      })();
       });
       document.addEventListener('click', (e)=>{
         if(menu.style.display === 'block') {
@@ -690,19 +746,19 @@ let byDay = {};
         doRedraw();
       });
       // Sort controls
-      document.getElementById('geonameSort').addEventListener('change', function(){
+      const geonameSortEl = document.getElementById('geonameSort'); if (geonameSortEl) geonameSortEl.addEventListener('change', function(){
         gtag('event', 'sort_change', { chart: 'city', mode: this.value });
         doRedraw();
       });
-      document.getElementById('callsignSort').addEventListener('change', function(){
+      const callsignSortEl = document.getElementById('callsignSort'); if (callsignSortEl) callsignSortEl.addEventListener('change', function(){
         gtag('event', 'sort_change', { chart: 'callsign', mode: this.value });
         doRedraw();
       });
-      document.getElementById('modFilter').addEventListener('change', function () {
+      const modFilterEl = document.getElementById('modFilter'); if (modFilterEl) modFilterEl.addEventListener('change', function () {
         selectedModFilter = this.value; 
         doRedraw();
       });
-      document.getElementById('simFilter').addEventListener('change', function () {
+      const simFilterEl = document.getElementById('simFilter'); if (simFilterEl) simFilterEl.addEventListener('change', function () {
         selectedSIMFilter = this.value; 
         doRedraw();
       });
@@ -765,7 +821,7 @@ let byDay = {};
         // Default to July 17th of current year through the latest available date if possible
         const now = new Date();
         const yyyy = now.getFullYear();
-        const july17 = `${yyyy}-07-17`;
+        const july17 = `2026-02-20`;
         let defaultStart = (allDates.some(d => d >= july17)) ? july17 : (minDate || july17);
         let defaultEnd = maxDate || july17;
 
@@ -782,6 +838,32 @@ let byDay = {};
           document.getElementById('endDate').value = maxDate || defaultEnd;
           doRedraw();
         });
+        // Pre/Post modification quick date slider
+        (function(){
+          const slider = document.getElementById("epochSlider");
+          const preLbl = document.getElementById("preModLabel");
+          const postLbl = document.getElementById("postModLabel");
+          const startEl = document.getElementById("startDate");
+          const endEl   = document.getElementById("endDate");
+          function todayStr(){ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); const dd=String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${dd}`; }
+          function setLabels(){ if(!slider||!preLbl||!postLbl) return; if(slider.value==="0"){ preLbl.classList.remove("muted"); postLbl.classList.add("muted"); } else { postLbl.classList.remove("muted"); preLbl.classList.add("muted"); } }
+          function applyPreset(which){ if(!startEl||!endEl) return; if(which===0){ startEl.value = "2025-07-04"; endEl.value = "2026-02-14"; } else { startEl.value = "2026-02-15"; endEl.value = todayStr(); } doRedraw(); try { gtag("event","date_preset",{preset: which===0?"pre_mod":"post_mod"}); } catch(e){} }
+          function syncFromDates(){ if(!slider||!startEl) return; const sd=(startEl.value||"").slice(0,10); if(sd){ slider.value = (sd < "2026-02-15") ? "0" : "1"; } setLabels(); }
+          if(slider){
+            // Toggle on click; no dragging needed
+            slider.addEventListener("click", (e)=>{
+              e.preventDefault();
+              const newVal = slider.value === "0" ? "1" : "0";
+              slider.value = newVal;
+              applyPreset(parseInt(newVal,10)||0);
+              setLabels();
+            });
+          }
+          if(preLbl){ preLbl.addEventListener("click", ()=>{ if(slider){ slider.value="0"; } applyPreset(0); setLabels(); }); }
+          if(postLbl){ postLbl.addEventListener("click", ()=>{ if(slider){ slider.value="1"; } applyPreset(1); setLabels(); }); }
+          // Align the slider state to current start date once defaults load
+          syncFromDates();
+        })();
       });
 
     map = L.map('map').setView([54, -100], 5);
