@@ -1,0 +1,2 @@
+Unit,SourceFile,Date,Time,TimestampUTC,Lat,Long,Alt,SSID,Registration,Throughput_Mbps_raw,Throughput_Mbps,GEOREFERENCE,FileSizeBytes
+Palantir5,iperf_p5_20251210T170000Z.log,10/12/2025,16:26:43,2025-12-10 16:26:43,49.88012,-119.46133,404,,,0.94,7.52,,300
