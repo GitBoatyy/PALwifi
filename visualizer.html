@@ -103,7 +103,6 @@
     <a href="index.html">Dashboard</a>
     <a href="map.html">Wifi Map</a>
     <a href="visualizer.html" class="active">Cell Map</a>
-    <a href="rawdata.html">Raw Data</a>
   </nav>
 
   <div id="container">
@@ -111,7 +110,7 @@
       PAL FLEET CELLULAR MAP
       <span class="info-icon" tabindex="0">i
         <span class="info-tooltip">
-          All AC new modem Feb 20. Bell SIM in YYR. 
+          All AC new modem Feb 20. Bell SIM in YYR+PNV. 
         </span>
       </span>
     </h1>
@@ -227,7 +226,7 @@
     const status0Label = 'No Cell';
     const status1Label = 'Has Cell';
     // Callsign → SIM and Mod status mappings (uppercased keys)
-    const TELUS_CALLSIGNS = new Set(["C-GYYR"]);
+    const TELUS_CALLSIGNS = new Set(["C-GYYR", "C-GPNV"]);
     const MOD_E_CALLSIGNS  = new Set(["C-GYYR", "C-GPOE", "C-GPFI", "C-FPVJ"]);
     // Everyone not in MOD_E_CALLSIGNS is treated as NON_MOD
     let currentLocations = ["__ALL__"];
@@ -666,7 +665,7 @@ let byDay = {};
 
         // Location filter
         let geo = canonicalGeoname(row.geoname || row.Geoname || "Unknown");
-        if (currentLocations.length > 0 && !currentLocations.includes(geo)) return false;
+        if (!currentLocations.includes(geo)) return false;
 
         // Callsign multiselect (existing logic)
         if (currentCallsigns[0] !== "__ALL__" && !currentCallsigns.includes(cs)) return false;
@@ -679,24 +678,37 @@ let byDay = {};
         allData.map(r => canonicalGeoname(r.geoname || r.Geoname || "Unknown"))
       )).filter(v => v && v !== "Unknown").sort();
 
-      // These are the ones to *not* check by default
-      const defaultDeselected = new Set(["Nain", "Schefferville", "Iqaluit", "Deer Lake", "Goose Bay", "Gander", "Gander Intl", "Churchill Falls", "Wabush", "Sept-Iles", "Gaspe", "Iles-de-la-Madeleine", "Lourdes-de-Blanc-Sablon", ""]);
+      const defaultDeselected = new Set([
+        "Nain", "Schefferville", "Iqaluit", "Deer Lake", "Goose Bay", "Gander",
+        "Gander Intl", "Churchill Falls", "Wabush", "Sept-Iles", "Gaspe",
+        "Iles-de-la-Madeleine", "Lourdes-de-Blanc-Sablon", ""
+      ]);
 
       const menu = document.getElementById('locationMenu');
-      menu.innerHTML = locs.map(l =>
-        `<label><input type="checkbox" value="${l.replace(/"/g, '&quot;')}" ${defaultDeselected.has(l) ? "" : "checked"}> ${l}</label>`
-      ).join('');
 
-      // Track selections (exclude deselected ones by default)
-      currentLocations = locs.filter(l => !defaultDeselected.has(l));
+      menu.innerHTML = `
+        <label><input type="checkbox" id="selectAllLocations"> Select All</label>
+        <hr>
+        ${locs.map(l =>
+          `<label><input type="checkbox" class="location-option" value="${l.replace(/"/g, '&quot;')}" ${defaultDeselected.has(l) ? "" : "checked"}> ${l}</label>`
+        ).join('')}
+      `;
 
-      menu.querySelectorAll('input[type=checkbox]').forEach(chk => {
+      const selectAllChk = document.getElementById('selectAllLocations');
+      const locationCheckboxes = menu.querySelectorAll('.location-option');
+
+      selectAllChk.addEventListener('change', () => {
+        locationCheckboxes.forEach(chk => {
+          chk.checked = selectAllChk.checked;
+        });
+        onLocationFilterChange();
+      });
+
+      locationCheckboxes.forEach(chk => {
         chk.addEventListener('change', onLocationFilterChange);
       });
 
-      // Set button label
-      document.getElementById('locationBtn').textContent = 
-        currentLocations.length === locs.length ? "All Locations ▼" : currentLocations.length + " selected ▼";
+      onLocationFilterChange();
     }
     
     function doRedraw() {
@@ -767,26 +779,34 @@ let byDay = {};
     });
     function onLocationFilterChange() {
       const menu = document.getElementById('locationMenu');
-      let checked = Array.from(menu.querySelectorAll('input[type=checkbox]'))
-                        .filter(b => b.checked)
-                        .map(b => b.value);
+      const locationCheckboxes = Array.from(menu.querySelectorAll('.location-option'));
+      const selectAllChk = document.getElementById('selectAllLocations');
 
-      currentLocations = checked;
+      currentLocations = locationCheckboxes
+        .filter(b => b.checked)
+        .map(b => b.value);
+
+      const checkedCount = currentLocations.length;
+      const totalCount = locationCheckboxes.length;
+
+      if (selectAllChk) {
+        selectAllChk.checked = checkedCount === totalCount && totalCount > 0;
+        selectAllChk.indeterminate = checkedCount > 0 && checkedCount < totalCount;
+      }
 
       let btn = document.getElementById('locationBtn');
-      if (currentLocations.length === 0) {
+      if (checkedCount === 0) {
         btn.textContent = "No Locations ▼";
-      } else if (currentLocations.length === 1) {
-        btn.textContent = currentLocations[0] + " ▼";
-      } else if (currentLocations.length === menu.querySelectorAll('input[type=checkbox]').length) {
+      } else if (checkedCount === totalCount) {
         btn.textContent = "All Locations ▼";
+      } else if (checkedCount === 1) {
+        btn.textContent = currentLocations[0] + " ▼";
       } else {
-        btn.textContent = currentLocations.length + " selected ▼";
+        btn.textContent = checkedCount + " selected ▼";
       }
 
       doRedraw();
     }
-
 
     const locBtn = document.getElementById('locationBtn');
     const locMenu = document.getElementById('locationMenu');
