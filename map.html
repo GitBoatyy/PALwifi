@@ -97,6 +97,7 @@
 
         let lat = parseFloat(p.Latitude || p.Lat || p.lat);
         let lon = parseFloat(p.Longitude || p.Long || p.lon || p.lng);
+        let alt = parseFloat(p.Alt || p.ALT || p.alt);
         if (isNaN(lat) || isNaN(lon)) return;
 
         latlngs.push([lat, lon]);
@@ -111,7 +112,7 @@
           Wifi: ${wifi ? "Yes" : "No"}<br>
           Internet: ${inet ? "Yes" : "No"}<br>
           Lat: ${lat}<br>
-          Lon: ${lon}
+          Lon: ${lon}<br>
           Alt: ${alt}
         `;
         let markerData = { lat, lon, color, popup };
