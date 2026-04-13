@@ -867,8 +867,8 @@ let byDay = {};
           const endEl   = document.getElementById("endDate");
           function todayStr(){ const d=new Date(); const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,"0"); const dd=String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${dd}`; }
           function setLabels(){ if(!slider||!preLbl||!postLbl) return; if(slider.value==="0"){ preLbl.classList.remove("muted"); postLbl.classList.add("muted"); } else { postLbl.classList.remove("muted"); preLbl.classList.add("muted"); } }
-          function applyPreset(which){ if(!startEl||!endEl) return; if(which===0){ startEl.value = "2025-07-04"; endEl.value = "2026-02-14"; } else { startEl.value = "2026-02-15"; endEl.value = todayStr(); } doRedraw(); try { gtag("event","date_preset",{preset: which===0?"pre_mod":"post_mod"}); } catch(e){} }
-          function syncFromDates(){ if(!slider||!startEl) return; const sd=(startEl.value||"").slice(0,10); if(sd){ slider.value = (sd < "2026-02-15") ? "0" : "1"; } setLabels(); }
+          function applyPreset(which){ if(!startEl||!endEl) return; if(which===0){ startEl.value = "2025-07-04"; endEl.value = "2026-02-19"; } else { startEl.value = "2026-02-20"; endEl.value = todayStr(); } doRedraw(); try { gtag("event","date_preset",{preset: which===0?"pre_mod":"post_mod"}); } catch(e){} }
+          function syncFromDates(){ if(!slider||!startEl) return; const sd=(startEl.value||"").slice(0,10); if(sd){ slider.value = (sd < "2026-02-20") ? "0" : "1"; } setLabels(); }
           if(slider){
             // Toggle on click; no dragging needed
             slider.addEventListener("click", (e)=>{
