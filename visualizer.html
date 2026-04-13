@@ -599,23 +599,52 @@ let byDay = {};
     }
 
     function updateCallsignDropdown(allData) {
-      let callsignCol = Object.keys(allData[0]).find(k=>k.toLowerCase().includes('callsign')) || 'callsign';
-      let callsigns = Array.from(new Set(allData.map(row=>row[callsignCol]||'Unknown')))
+      let callsignCol = Object.keys(allData[0]).find(k => k.toLowerCase().includes('callsign')) || 'callsign';
+
+      let callsigns = Array.from(
+        new Set(allData.map(row => row[callsignCol] || 'Unknown'))
+      )
         .filter(v => v && v !== 'Unknown')
         .sort();
+
+      const defaultDeselected = new Set([
+        ""
+      ]);
+
       const menu = document.getElementById('callsignMenu');
+
       menu.innerHTML = `
-        <label><input type="checkbox" value="__ALL__" checked> <b>All Callsigns</b></label>
+        <label><input type="checkbox" id="selectAllCallsigns"> Select All</label>
+        <hr>
         ${callsigns.map(cs =>
-          `<label><input type="checkbox" value="${cs.replace(/"/g, '&quot;')}"> ${cs}</label>`
+          `<label><input type="checkbox" class="callsign-option" value="${cs.replace(/"/g, '&quot;')}" ${defaultDeselected.has(cs) ? "" : "checked"}> ${cs}</label>`
         ).join('')}
       `;
-      menu.querySelectorAll('input[type=checkbox]').forEach(chk => {
-        chk.addEventListener('change',function(e){
-            onCallsignFilterChange(e)
-            doRedraw();
-            }); 
+
+      const selectAllChk = document.getElementById('selectAllCallsigns');
+      const callsignCheckboxes = menu.querySelectorAll('.callsign-option');
+
+      selectAllChk.addEventListener('change', () => {
+        callsignCheckboxes.forEach(chk => {
+          chk.checked = selectAllChk.checked;
+        });
+        onCallsignFilterChange();
+        doRedraw();
       });
+
+      callsignCheckboxes.forEach(chk => {
+        chk.addEventListener('change', () => {
+          // keep Select All in sync with individual items
+          selectAllChk.checked = [...callsignCheckboxes].every(c => c.checked);
+          onCallsignFilterChange();
+          doRedraw();
+        });
+      });
+
+      // initialize Select All state
+      selectAllChk.checked = [...callsignCheckboxes].every(c => c.checked);
+
+      onCallsignFilterChange();
     }
     function onCallsignFilterChange(e) {
       const menu = document.getElementById('callsignMenu');
