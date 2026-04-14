@@ -600,83 +600,69 @@ let byDay = {};
 
     function updateCallsignDropdown(allData) {
       let callsignCol = Object.keys(allData[0]).find(k => k.toLowerCase().includes('callsign')) || 'callsign';
-
-      let callsigns = Array.from(
-        new Set(allData.map(row => row[callsignCol] || 'Unknown'))
-      )
+      let callsigns = Array.from(new Set(allData.map(row => row[callsignCol] || 'Unknown')))
         .filter(v => v && v !== 'Unknown')
         .sort();
-
-      const defaultDeselected = new Set([
-        ""
-      ]);
 
       const menu = document.getElementById('callsignMenu');
 
       menu.innerHTML = `
-        <label><input type="checkbox" id="selectAllCallsigns"> Select All</label>
+        <label><input type="checkbox" id="selectAllCallsigns" checked> Select All</label>
         <hr>
         ${callsigns.map(cs =>
-          `<label><input type="checkbox" class="callsign-option" value="${cs.replace(/"/g, '&quot;')}" ${defaultDeselected.has(cs) ? "" : "checked"}> ${cs}</label>`
+          `<label><input type="checkbox" class="callsign-option" value="${cs.replace(/"/g, '&quot;')}" checked> ${cs}</label>`
         ).join('')}
       `;
 
       const selectAllChk = document.getElementById('selectAllCallsigns');
-      const callsignCheckboxes = menu.querySelectorAll('.callsign-option');
+      const callsignCheckboxes = Array.from(menu.querySelectorAll('.callsign-option'));
 
       selectAllChk.addEventListener('change', () => {
         callsignCheckboxes.forEach(chk => {
           chk.checked = selectAllChk.checked;
         });
         onCallsignFilterChange();
-        doRedraw();
       });
 
       callsignCheckboxes.forEach(chk => {
-        chk.addEventListener('change', () => {
-          // keep Select All in sync with individual items
-          selectAllChk.checked = [...callsignCheckboxes].every(c => c.checked);
-          onCallsignFilterChange();
-          doRedraw();
-        });
+        chk.addEventListener('change', onCallsignFilterChange);
       });
-
-      // initialize Select All state
-      selectAllChk.checked = [...callsignCheckboxes].every(c => c.checked);
 
       onCallsignFilterChange();
     }
-    function onCallsignFilterChange(e) {
-      const menu = document.getElementById('callsignMenu');
-      let allBoxes = Array.from(menu.querySelectorAll('input[type=checkbox]'));
-      let allBox = menu.querySelector('input[value="__ALL__"]');
-      let checked = allBoxes.filter(b => b.checked).map(b=>b.value);
 
-      if(e.target.value === "__ALL__") {
-        if (e.target.checked) {
-          allBoxes.forEach(b => b.checked = (b.value === "__ALL__"));
-          currentCallsigns = ["__ALL__"];
-        } else {
-          allBox.checked = true;
-          currentCallsigns = ["__ALL__"];
-        }
-      } else {
-        allBox.checked = false;
-        let checkedSpecific = allBoxes.filter(b => b.value !== "__ALL__" && b.checked);
-        if (checkedSpecific.length === 0) {
-          allBox.checked = true;
-          currentCallsigns = ["__ALL__"];
-        } else {
-          currentCallsigns = checkedSpecific.map(b => b.value);
-        }
+    function onCallsignFilterChange() {
+      const menu = document.getElementById('callsignMenu');
+      const callsignCheckboxes = Array.from(menu.querySelectorAll('.callsign-option'));
+      const selectAllChk = document.getElementById('selectAllCallsigns');
+
+      currentCallsigns = callsignCheckboxes
+        .filter(b => b.checked)
+        .map(b => b.value);
+
+      const checkedCount = currentCallsigns.length;
+      const totalCount = callsignCheckboxes.length;
+
+      if (selectAllChk) {
+        selectAllChk.checked = checkedCount === totalCount && totalCount > 0;
+        selectAllChk.indeterminate = checkedCount > 0 && checkedCount < totalCount;
       }
+
       let btn = document.getElementById('callsignBtn');
-      if(currentCallsigns[0] === "__ALL__" || currentCallsigns.length === 0) btn.textContent = "All Callsigns ▼";
-      else if(currentCallsigns.length === 1) btn.textContent = currentCallsigns[0] + " ▼";
-      else btn.textContent = currentCallsigns.length + " selected ▼";
+      if (checkedCount === 0) {
+        btn.textContent = "No Callsigns ▼";
+      } else if (checkedCount === totalCount) {
+        btn.textContent = "All Callsigns ▼";
+      } else if (checkedCount === 1) {
+        btn.textContent = currentCallsigns[0] + " ▼";
+      } else {
+        btn.textContent = checkedCount + " selected ▼";
+      }
+
       gtag('event', 'callsign_filter', {
-        selection: currentCallsigns[0] === '__ALL__' ? 'ALL' : currentCallsigns.join(',')
+        selection: checkedCount === totalCount ? 'ALL' : currentCallsigns.join(',')
       });
+
       doRedraw();
     }
     function filterByEquip(data) {
