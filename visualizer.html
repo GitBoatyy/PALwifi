@@ -100,10 +100,6 @@
     .kpi-card .kpi-label { font-size:0.86em; font-weight:600; color:#5b6b82; text-transform:uppercase; letter-spacing:0.03em;}
     .kpi-card .kpi-value { font-size:1.9em; font-weight:800; color:#164778; line-height:1.15; margin-top:2px;}
     .kpi-card .kpi-unit { font-size:0.5em; font-weight:600; color:#7a8aa0; margin-left:3px;}
-    .speed-badge {
-      font: 700 11px/1 sans-serif; color:#fff; padding:2px 6px; border-radius:9px;
-      border:1.5px solid #fff; box-shadow:0 1px 3px #0003; white-space:nowrap; text-align:center;
-    }
     @media (max-width: 950px) {
       .flexrow { flex-direction: column;}
       #container { padding: 12px 3vw;}
@@ -464,7 +460,7 @@
       return `<svg width="${r*2}" height="${r*2}"><path d="${d1}" fill="#1bc541"/><path d="${d0}" fill="#e83a3a"/></svg>`;
     }
 
-    let map, markerLayer, speedMarkerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
+    let map, markerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
         speedCityChart, speedCallsignChart,
         allData = [], currentCallsigns = ["__ALL__"], includeNetFix = true,
         selectedModFilter = "ALL", selectedSIMFilter = "ALL";
@@ -487,8 +483,6 @@
       if (includeNetFix) filteredData = fixCellStatusWithNet(filteredData);
       if (markerLayer) { markerLayer.clearLayers(); }
       else { markerLayer = L.layerGroup().addTo(map); }
-      if (speedMarkerLayer) { speedMarkerLayer.clearLayers(); }
-      else { speedMarkerLayer = L.layerGroup().addTo(map); }
 
       // Aggregate by City for map and chart
       let geonameGroup = {};
@@ -528,6 +522,10 @@
         let meanLon = val.lonList.reduce((a,b)=>a+b,0)/n;
         val.lat = meanLat; val.lon = meanLon;
       });
+
+      // Speed-test aggregates (PosnType 922) — used in the connectivity hover and the charts below
+      const sAgg = buildSpeedAgg(filteredData);
+
       Object.entries(geonameGroup).forEach(([geo, val]) => {
         let pieIcon = L.divIcon({
           className: 'pie-marker',
@@ -547,6 +545,19 @@
         <table style='font-size:12px;'><tr><th>Callsign</th><th>${status0Label}</th><th>${status1Label}</th></tr>
         ${callsignRows}
         </table>`;
+        // Speed test reports for this city (PosnType 922), folded into the connectivity hover
+        const sc = sAgg.byCity[geo];
+        if (sc && sc.tests) {
+          const scRows = Object.entries(sAgg.cityCallsign[geo] || {})
+            .sort((a,b)=> accDownMbps(b[1]) - accDownMbps(a[1]))
+            .map(([cs,a]) => `<tr><td>${cs}</td><td>${a.rxN?r1(accDownMbps(a)):'–'}</td><td>${a.txN?r1(accUpMbps(a)):'–'}</td><td>${a.pingN?Math.round(accPingMs(a)):'–'}</td><td>${a.tests}</td></tr>`)
+            .join('');
+          html += `<hr>
+          <b>Speed Tests</b> — Avg ↓ <b>${sc.rxN?r1(accDownMbps(sc)):'–'}</b> · ↑ <b>${sc.txN?r1(accUpMbps(sc)):'–'}</b> Mbps · Ping <b>${sc.pingN?Math.round(accPingMs(sc)):'–'}</b> ms (n=${sc.tests})<br>
+          <table style='font-size:12px;'><tr><th>Callsign</th><th>↓Mbps</th><th>↑Mbps</th><th>Ping</th><th>n</th></tr>
+          ${scRows}
+          </table>`;
+        }
         marker.bindTooltip(html, {sticky: true});
       });
 
@@ -716,8 +727,7 @@ let byDay = {};
         }
       });
 
-      // ===== Cellular Speed Tests (PosnType 922) =====
-      const sAgg = buildSpeedAgg(filteredData);
+      // ===== Cellular Speed Tests (PosnType 922) — KPIs + charts (sAgg computed above) =====
 
       // KPI panel (fleet averages)
       const f = sAgg.fleet;
@@ -772,34 +782,6 @@ let byDay = {};
         }
       });
 
-      // Separate speed-test markers on the map (own hover popup, by callsign)
-      function speedColor(dlMbps) { return dlMbps >= 10 ? '#1a9850' : dlMbps >= 5 ? '#f0a800' : '#d7301f'; }
-      Object.keys(sAgg.byCity).forEach(geo => {
-        const lats = sAgg.cityLat[geo], lons = sAgg.cityLon[geo];
-        if (!lats || !lats.length) return;
-        const lat = lats.reduce((a,b)=>a+b,0)/lats.length;
-        const lon = lons.reduce((a,b)=>a+b,0)/lons.length;
-        const acc = sAgg.byCity[geo];
-        const dl = accDownMbps(acc), ul = accUpMbps(acc), pg = accPingMs(acc);
-        const badge = L.divIcon({
-          className: 'pie-marker',
-          iconSize: [34, 18], iconAnchor: [-16, 40],   // offset up-right of the city pie marker
-          html: `<div class="speed-badge" style="background:${speedColor(dl)}">${r1(dl)}↓</div>`
-        });
-        const marker = L.marker([lat, lon], { icon: badge, zIndexOffset: 1000 }).addTo(speedMarkerLayer);
-        const csRows = Object.entries(sAgg.cityCallsign[geo])
-          .sort((a,b)=> accDownMbps(b[1]) - accDownMbps(a[1]))
-          .map(([cs,a]) => `<tr><td>${cs}</td><td>${a.rxN?r1(accDownMbps(a)):'–'}</td><td>${a.txN?r1(accUpMbps(a)):'–'}</td><td>${a.pingN?Math.round(accPingMs(a)):'–'}</td><td>${a.tests}</td></tr>`)
-          .join('') || "<tr><td colspan='5' style='text-align:center'>None</td></tr>";
-        const html = `<b>${geo} — Speed Tests</b><br/>
-          <span style='font-size:13px;'>Avg ↓ <b>${acc.rxN?r1(dl):'–'}</b> · ↑ <b>${acc.txN?r1(ul):'–'}</b> Mbps · Ping <b>${acc.pingN?Math.round(pg):'–'}</b> ms &nbsp;(n=${acc.tests})</span>
-          <hr>
-          <b>By Callsign:</b><br>
-          <table style='font-size:12px;'><tr><th>Callsign</th><th>↓Mbps</th><th>↑Mbps</th><th>Ping</th><th>n</th></tr>
-          ${csRows}
-          </table>`;
-        marker.bindTooltip(html, { sticky: true });
-      });
     }
 
     function filterByDate(data, start, end) {
