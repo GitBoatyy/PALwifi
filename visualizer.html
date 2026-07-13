@@ -92,6 +92,18 @@
     .chart-header { display:flex; align-items:center; gap:10px; justify-content: space-between; flex-wrap: wrap;}
     .sort-wrap { display:flex; align-items:center; gap:6px; font-size: 0.95em;}
     select.sort { border:1px solid #aaa; border-radius:6px; padding:4px 8px; background:#fff; }
+    /* Speed test section */
+    .section-divider { border:none; border-top:2px solid #e6e9ee; margin:38px 0 6px; }
+    h2.section-title { font-weight:700; color:#164778; display:flex; align-items:center; gap:8px; margin:8px 0 4px;}
+    .kpi-row { display:flex; gap:18px; flex-wrap:wrap; margin:12px 0 22px;}
+    .kpi-card { flex:1; min-width:150px; background:#f5f8fc; border:1px solid #e2e8f2; border-radius:10px; padding:14px 18px;}
+    .kpi-card .kpi-label { font-size:0.86em; font-weight:600; color:#5b6b82; text-transform:uppercase; letter-spacing:0.03em;}
+    .kpi-card .kpi-value { font-size:1.9em; font-weight:800; color:#164778; line-height:1.15; margin-top:2px;}
+    .kpi-card .kpi-unit { font-size:0.5em; font-weight:600; color:#7a8aa0; margin-left:3px;}
+    .speed-badge {
+      font: 700 11px/1 sans-serif; color:#fff; padding:2px 6px; border-radius:9px;
+      border:1.5px solid #fff; box-shadow:0 1px 3px #0003; white-space:nowrap; text-align:center;
+    }
     @media (max-width: 950px) {
       .flexrow { flex-direction: column;}
       #container { padding: 12px 3vw;}
@@ -217,6 +229,58 @@
       </div>
     </div>
 
+    <!-- ===== Cellular Speed Tests (PosnType 922) ===== -->
+    <hr class="section-divider">
+    <h2 class="section-title">
+      Cellular Speed Tests
+      <span class="info-icon" tabindex="0">i
+        <span class="info-tooltip">
+          Cellular speed tests (position type 922) from master_results.csv. Throughput shown in Mbps (source values are kbps). Data-quality filter: individual values are excluded when download or upload &lt; 2000 kbps (2 Mbps) or ping &gt; 5000 ms. Respects the date, callsign, SIM and location filters above.
+        </span>
+      </span>
+    </h2>
+    <div id="speedKpis" class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Fleet Avg Download</div><div class="kpi-value" id="kpiDown">–<span class="kpi-unit">Mbps</span></div></div>
+      <div class="kpi-card"><div class="kpi-label">Fleet Avg Upload</div><div class="kpi-value" id="kpiUp">–<span class="kpi-unit">Mbps</span></div></div>
+      <div class="kpi-card"><div class="kpi-label">Fleet Avg Ping</div><div class="kpi-value" id="kpiPing">–<span class="kpi-unit">ms</span></div></div>
+      <div class="kpi-card"><div class="kpi-label">Speed Tests</div><div class="kpi-value" id="kpiCount">–</div></div>
+    </div>
+    <div class="flexrow">
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Speed Test by City</h3>
+          <div class="sort-wrap">
+            <label for="speedCitySort">Sort:</label>
+            <select id="speedCitySort" class="sort">
+              <option value="down_desc">High→Low (Download)</option>
+              <option value="up_desc">High→Low (Upload)</option>
+              <option value="ping_asc">Low→High (Ping)</option>
+              <option value="tests_desc">High→Low (# Tests)</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="speedCityChart"></canvas>
+      </div>
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Speed Test by Callsign</h3>
+          <div class="sort-wrap">
+            <label for="speedCallsignSort">Sort:</label>
+            <select id="speedCallsignSort" class="sort">
+              <option value="down_desc">High→Low (Download)</option>
+              <option value="up_desc">High→Low (Upload)</option>
+              <option value="ping_asc">Low→High (Ping)</option>
+              <option value="tests_desc">High→Low (# Tests)</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="speedCallsignChart"></canvas>
+      </div>
+    </div>
+    <p id="speedEmptyMsg" style="display:none; color:#7a8aa0; font-style:italic; margin-top:10px;">
+      No speed tests in the current filter selection.
+    </p>
+
   <script>
     // Navbar highlight logic
     document.querySelectorAll('#navbar a').forEach(a=>{
@@ -225,6 +289,79 @@
 
     const status0Label = 'No Cell';
     const status1Label = 'Has Cell';
+
+    // ===== Cellular Speed Test (PosnType 922) config & helpers =====
+    // Source TX/RX are in kbps; ping in ms. Thresholds applied per-value.
+    const SPEED_MIN_KBPS = 2000;   // exclude download/upload readings below this
+    const PING_MAX_MS    = 5000;   // exclude ping readings above this
+    const KBPS_TO_MBPS   = 1000;
+
+    // Parse a 922 speed-test row -> {tx,rx,ping} in raw units, or null.
+    function parseSpeedRow(row) {
+      const pt = (row.PosnType || row.posntype || row.POSNTYPE || "").toString().trim();
+      const dv = (row.data || row.Data || "").toString();
+      if (pt !== "922" && !/TX:/i.test(dv)) return null;
+      const tx = dv.match(/TX:\s*(-?\d+(?:\.\d+)?)/i);
+      const rx = dv.match(/RX:\s*(-?\d+(?:\.\d+)?)/i);
+      const pg = dv.match(/Ping:\s*(-?\d+(?:\.\d+)?)/i);
+      if (!tx || !rx || !pg) return null;
+      return { tx: parseFloat(tx[1]), rx: parseFloat(rx[1]), ping: parseFloat(pg[1]) };
+    }
+
+    // Running accumulator (per-value counts so a bad ping doesn't drop good throughput)
+    function newSpeedAcc() {
+      return { txSum:0, txN:0, rxSum:0, rxN:0, pingSum:0, pingN:0, tests:0 };
+    }
+    function addToAcc(acc, s) {
+      acc.tests++;
+      if (s.tx >= SPEED_MIN_KBPS) { acc.txSum += s.tx; acc.txN++; }
+      if (s.rx >= SPEED_MIN_KBPS) { acc.rxSum += s.rx; acc.rxN++; }
+      if (s.ping <= PING_MAX_MS && s.ping >= 0) { acc.pingSum += s.ping; acc.pingN++; }
+    }
+    const accDownMbps = a => a.rxN ? (a.rxSum / a.rxN) / KBPS_TO_MBPS : 0;
+    const accUpMbps   = a => a.txN ? (a.txSum / a.txN) / KBPS_TO_MBPS : 0;
+    const accPingMs   = a => a.pingN ? (a.pingSum / a.pingN) : 0;
+
+    // Build speed-test aggregates from already-filtered rows.
+    function buildSpeedAgg(rows) {
+      const byCity = {}, byCallsign = {}, fleet = newSpeedAcc();
+      const cityCallsign = {}, cityLat = {}, cityLon = {};
+      rows.forEach(row => {
+        const s = parseSpeedRow(row);
+        if (!s) return;
+        let rawGeo = row.geoname || row.Geoname || "Unknown";
+        if (rawGeo === "S7000" || rawGeo === "CGR") return;
+        const geo = canonicalGeoname(rawGeo);
+        if (!geo) return;
+        const cs = (row.callsign || row.Callsign || "Unknown").toString().trim();
+        addToAcc(fleet, s);
+        if (!byCity[geo]) byCity[geo] = newSpeedAcc();
+        addToAcc(byCity[geo], s);
+        if (!byCallsign[cs]) byCallsign[cs] = newSpeedAcc();
+        addToAcc(byCallsign[cs], s);
+        if (!cityCallsign[geo]) cityCallsign[geo] = {};
+        if (!cityCallsign[geo][cs]) cityCallsign[geo][cs] = newSpeedAcc();
+        addToAcc(cityCallsign[geo][cs], s);
+        const lat = parseFloat(row.latitude || row.Latitude);
+        const lon = parseFloat(row.longitude || row.Longitude);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          if (!cityLat[geo]) { cityLat[geo] = []; cityLon[geo] = []; }
+          cityLat[geo].push(lat); cityLon[geo].push(lon);
+        }
+      });
+      return { byCity, byCallsign, fleet, cityCallsign, cityLat, cityLon };
+    }
+
+    // Sort keys of an aggregate map by the selected mode.
+    function sortSpeedKeys(keys, agg, mode) {
+      return keys.sort((a, b) => {
+        if (mode === 'up_desc')    return accUpMbps(agg[b])   - accUpMbps(agg[a]);
+        if (mode === 'ping_asc')   return (accPingMs(agg[a]) || Infinity) - (accPingMs(agg[b]) || Infinity);
+        if (mode === 'tests_desc') return agg[b].tests - agg[a].tests;
+        return accDownMbps(agg[b]) - accDownMbps(agg[a]); // down_desc default
+      });
+    }
+    const r1 = x => Math.round(x * 10) / 10;
     // Callsign → SIM and Mod status mappings (uppercased keys)
     const TELUS_CALLSIGNS = new Set(["C-GYYR", "C-GPNV"]);
     const MOD_E_CALLSIGNS  = new Set(["C-GYYR", "C-GPOE", "C-GPFI", "C-FPVJ"]);
@@ -327,7 +464,8 @@
       return `<svg width="${r*2}" height="${r*2}"><path d="${d1}" fill="#1bc541"/><path d="${d0}" fill="#e83a3a"/></svg>`;
     }
 
-    let map, markerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
+    let map, markerLayer, speedMarkerLayer, geonameChart, callsignChart, dailyPctChart, callsignPctChart,
+        speedCityChart, speedCallsignChart,
         allData = [], currentCallsigns = ["__ALL__"], includeNetFix = true,
         selectedModFilter = "ALL", selectedSIMFilter = "ALL";
 
@@ -349,6 +487,8 @@
       if (includeNetFix) filteredData = fixCellStatusWithNet(filteredData);
       if (markerLayer) { markerLayer.clearLayers(); }
       else { markerLayer = L.layerGroup().addTo(map); }
+      if (speedMarkerLayer) { speedMarkerLayer.clearLayers(); }
+      else { speedMarkerLayer = L.layerGroup().addTo(map); }
 
       // Aggregate by City for map and chart
       let geonameGroup = {};
@@ -575,6 +715,91 @@ let byDay = {};
           scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v)=> v + '%' } } }
         }
       });
+
+      // ===== Cellular Speed Tests (PosnType 922) =====
+      const sAgg = buildSpeedAgg(filteredData);
+
+      // KPI panel (fleet averages)
+      const f = sAgg.fleet;
+      document.getElementById('kpiDown').innerHTML  = (f.rxN ? r1(accDownMbps(f)) : '–') + '<span class="kpi-unit">Mbps</span>';
+      document.getElementById('kpiUp').innerHTML    = (f.txN ? r1(accUpMbps(f))   : '–') + '<span class="kpi-unit">Mbps</span>';
+      document.getElementById('kpiPing').innerHTML  = (f.pingN ? Math.round(accPingMs(f)) : '–') + '<span class="kpi-unit">ms</span>';
+      document.getElementById('kpiCount').textContent = f.tests;
+      const emptyMsg = document.getElementById('speedEmptyMsg');
+      if (emptyMsg) emptyMsg.style.display = f.tests ? 'none' : 'block';
+
+      // Speed test by City chart (grouped: Download / Upload in Mbps; ping in tooltip)
+      let sCityKeys = sortSpeedKeys(Object.keys(sAgg.byCity), sAgg.byCity, document.getElementById('speedCitySort').value);
+      const cityDown = sCityKeys.map(k => r1(accDownMbps(sAgg.byCity[k])));
+      const cityUp   = sCityKeys.map(k => r1(accUpMbps(sAgg.byCity[k])));
+      const cityPing = sCityKeys.map(k => Math.round(accPingMs(sAgg.byCity[k])));
+      const cityTests= sCityKeys.map(k => sAgg.byCity[k].tests);
+      if (speedCityChart) speedCityChart.destroy();
+      speedCityChart = new Chart(document.getElementById('speedCityChart'), {
+        type: 'bar',
+        data: { labels: sCityKeys, datasets: [
+          { label: 'Avg Download', data: cityDown, backgroundColor: '#2b8cbe' },
+          { label: 'Avg Upload',   data: cityUp,   backgroundColor: '#7bccc4' }
+        ]},
+        options: {
+          responsive: true,
+          plugins: { legend: { position:'top' }, tooltip: { callbacks: {
+            afterBody: (items) => { const i = items[0].dataIndex; return `Ping: ${cityPing[i]} ms\nTests: ${cityTests[i]}`; }
+          }}},
+          scales: { y: { beginAtZero:true, title:{ display:true, text:'Mbps' } } }
+        }
+      });
+
+      // Speed test by Callsign chart
+      let sCsKeys = sortSpeedKeys(Object.keys(sAgg.byCallsign), sAgg.byCallsign, document.getElementById('speedCallsignSort').value);
+      const csDown = sCsKeys.map(k => r1(accDownMbps(sAgg.byCallsign[k])));
+      const csUp   = sCsKeys.map(k => r1(accUpMbps(sAgg.byCallsign[k])));
+      const csPing = sCsKeys.map(k => Math.round(accPingMs(sAgg.byCallsign[k])));
+      const csTests= sCsKeys.map(k => sAgg.byCallsign[k].tests);
+      if (speedCallsignChart) speedCallsignChart.destroy();
+      speedCallsignChart = new Chart(document.getElementById('speedCallsignChart'), {
+        type: 'bar',
+        data: { labels: sCsKeys, datasets: [
+          { label: 'Avg Download', data: csDown, backgroundColor: '#2b8cbe' },
+          { label: 'Avg Upload',   data: csUp,   backgroundColor: '#7bccc4' }
+        ]},
+        options: {
+          responsive: true,
+          plugins: { legend: { position:'top' }, tooltip: { callbacks: {
+            afterBody: (items) => { const i = items[0].dataIndex; return `Ping: ${csPing[i]} ms\nTests: ${csTests[i]}`; }
+          }}},
+          scales: { y: { beginAtZero:true, title:{ display:true, text:'Mbps' } } }
+        }
+      });
+
+      // Separate speed-test markers on the map (own hover popup, by callsign)
+      function speedColor(dlMbps) { return dlMbps >= 10 ? '#1a9850' : dlMbps >= 5 ? '#f0a800' : '#d7301f'; }
+      Object.keys(sAgg.byCity).forEach(geo => {
+        const lats = sAgg.cityLat[geo], lons = sAgg.cityLon[geo];
+        if (!lats || !lats.length) return;
+        const lat = lats.reduce((a,b)=>a+b,0)/lats.length;
+        const lon = lons.reduce((a,b)=>a+b,0)/lons.length;
+        const acc = sAgg.byCity[geo];
+        const dl = accDownMbps(acc), ul = accUpMbps(acc), pg = accPingMs(acc);
+        const badge = L.divIcon({
+          className: 'pie-marker',
+          iconSize: [34, 18], iconAnchor: [-16, 40],   // offset up-right of the city pie marker
+          html: `<div class="speed-badge" style="background:${speedColor(dl)}">${r1(dl)}↓</div>`
+        });
+        const marker = L.marker([lat, lon], { icon: badge, zIndexOffset: 1000 }).addTo(speedMarkerLayer);
+        const csRows = Object.entries(sAgg.cityCallsign[geo])
+          .sort((a,b)=> accDownMbps(b[1]) - accDownMbps(a[1]))
+          .map(([cs,a]) => `<tr><td>${cs}</td><td>${a.rxN?r1(accDownMbps(a)):'–'}</td><td>${a.txN?r1(accUpMbps(a)):'–'}</td><td>${a.pingN?Math.round(accPingMs(a)):'–'}</td><td>${a.tests}</td></tr>`)
+          .join('') || "<tr><td colspan='5' style='text-align:center'>None</td></tr>";
+        const html = `<b>${geo} — Speed Tests</b><br/>
+          <span style='font-size:13px;'>Avg ↓ <b>${acc.rxN?r1(dl):'–'}</b> · ↑ <b>${acc.txN?r1(ul):'–'}</b> Mbps · Ping <b>${acc.pingN?Math.round(pg):'–'}</b> ms &nbsp;(n=${acc.tests})</span>
+          <hr>
+          <b>By Callsign:</b><br>
+          <table style='font-size:12px;'><tr><th>Callsign</th><th>↓Mbps</th><th>↑Mbps</th><th>Ping</th><th>n</th></tr>
+          ${csRows}
+          </table>`;
+        marker.bindTooltip(html, { sticky: true });
+      });
     }
 
     function filterByDate(data, start, end) {
@@ -777,6 +1002,14 @@ let byDay = {};
       });
       const callsignSortEl = document.getElementById('callsignSort'); if (callsignSortEl) callsignSortEl.addEventListener('change', function(){
         gtag('event', 'sort_change', { chart: 'callsign', mode: this.value });
+        doRedraw();
+      });
+      const speedCitySortEl = document.getElementById('speedCitySort'); if (speedCitySortEl) speedCitySortEl.addEventListener('change', function(){
+        gtag('event', 'sort_change', { chart: 'speed_city', mode: this.value });
+        doRedraw();
+      });
+      const speedCallsignSortEl = document.getElementById('speedCallsignSort'); if (speedCallsignSortEl) speedCallsignSortEl.addEventListener('change', function(){
+        gtag('event', 'sort_change', { chart: 'speed_callsign', mode: this.value });
         doRedraw();
       });
       const modFilterEl = document.getElementById('modFilter'); if (modFilterEl) modFilterEl.addEventListener('change', function () {
