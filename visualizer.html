@@ -167,46 +167,8 @@
       <div class="kpi-card"><div class="kpi-label">Speed Tests</div><div class="kpi-value" id="kpiCount">–</div></div>
     </div>
 
-    <!-- Row 1: by City — cell connectivity (left) + speed test (right) -->
+    <!-- Row 1: by Callsign — cell connectivity (left) + speed test (right) -->
     <div class="flexrow">
-      <div>
-        <div class="chart-header">
-          <h3 style="margin:0;">Cell status by City</h3>
-          <div class="sort-wrap">
-            <label for="geonameSort">Sort:</label>
-            <select id="geonameSort" class="sort">
-              <option value="total_desc">High→Low (total)</option>
-              <option value="nocell_desc">High→Low (No Cell)</option>
-              <option value="hascell_desc">High→Low (Has Cell)</option>
-            </select>
-          </div>
-        </div>
-        <canvas id="geonameChart"></canvas>
-      </div>
-      <div>
-        <div class="chart-header">
-          <h3 style="margin:0;">Speed Test by City</h3>
-          <div class="sort-wrap">
-            <label for="speedCitySort">Sort:</label>
-            <select id="speedCitySort" class="sort">
-              <option value="down_desc">High→Low (Download)</option>
-              <option value="up_desc">High→Low (Upload)</option>
-              <option value="ping_asc">Low→High (Ping)</option>
-              <option value="tests_desc">High→Low (# Tests)</option>
-            </select>
-            <span class="info-icon" tabindex="0">i
-              <span class="info-tooltip">
-                Cellular speed tests (position type 922) from master_results.csv. Throughput shown in Mbps (source values are kbps). Data-quality filter: individual values are excluded when download or upload &lt; 2000 kbps (2 Mbps) or ping &gt; 5000 ms. Respects the date, callsign, SIM and location filters above.
-              </span>
-            </span>
-          </div>
-        </div>
-        <canvas id="speedCityChart"></canvas>
-      </div>
-    </div>
-
-    <!-- Row 2: by Callsign — cell connectivity (left) + speed test (right) -->
-    <div class="flexrow" style="margin-top:28px;">
       <div>
         <div class="chart-header">
           <h3 style="margin:0;">Cell status by Callsign</h3>
@@ -237,9 +199,47 @@
               <option value="ping_asc">Low→High (Ping)</option>
               <option value="tests_desc">High→Low (# Tests)</option>
             </select>
+            <span class="info-icon" tabindex="0">i
+              <span class="info-tooltip">
+                Cellular speed tests (position type 922) from master_results.csv. Throughput shown in Mbps (source values are kbps). Data-quality filter: individual values are excluded when download or upload &lt; 2000 kbps (2 Mbps) or ping &gt; 5000 ms. Respects the date, callsign, SIM and location filters above.
+              </span>
+            </span>
           </div>
         </div>
         <canvas id="speedCallsignChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Row 2: by City — cell connectivity (left) + speed test (right) -->
+    <div class="flexrow" style="margin-top:28px;">
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Cell status by City</h3>
+          <div class="sort-wrap">
+            <label for="geonameSort">Sort:</label>
+            <select id="geonameSort" class="sort">
+              <option value="total_desc">High→Low (total)</option>
+              <option value="nocell_desc">High→Low (No Cell)</option>
+              <option value="hascell_desc">High→Low (Has Cell)</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="geonameChart"></canvas>
+      </div>
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Speed Test by City</h3>
+          <div class="sort-wrap">
+            <label for="speedCitySort">Sort:</label>
+            <select id="speedCitySort" class="sort">
+              <option value="down_desc">High→Low (Download)</option>
+              <option value="up_desc">High→Low (Upload)</option>
+              <option value="ping_asc">Low→High (Ping)</option>
+              <option value="tests_desc">High→Low (# Tests)</option>
+            </select>
+          </div>
+        </div>
+        <canvas id="speedCityChart"></canvas>
       </div>
     </div>
     <p id="speedEmptyMsg" style="display:none; color:#7a8aa0; font-style:italic; margin-top:10px;">
@@ -531,31 +531,35 @@
           html: pieSVG(val.count0, val.count1, 18)
         });
         let marker = L.marker([val.lat, val.lon], {icon: pieIcon}).addTo(markerLayer);
-        let callsignRows = Object.entries(val.callsigns)
-        .filter(([_,v])=>v.count0>0||v.count1>0)
-        .map(([cs,v])=>`<tr><td>${cs}</td><td>${v.count0}</td><td>${v.count1}</td></tr>`)
-        .join('');
-        if(!callsignRows) callsignRows = "<tr><td colspan='3' style='text-align:center'>None</td></tr>";
+        // One row per callsign: cell-status counts + speed-test averages (Mbps/ping) aligned to the right
+        const spd = sAgg.cityCallsign[geo] || {};
+        const hasSpeed = Object.keys(spd).length > 0;
+        const csSet = new Set();
+        Object.entries(val.callsigns).forEach(([cs,v])=>{ if(v.count0>0||v.count1>0) csSet.add(cs); });
+        Object.keys(spd).forEach(cs=>csSet.add(cs));
+        let callsignRows = Array.from(csSet).sort().map(cs => {
+          const v = val.callsigns[cs] || {count0:0, count1:0};
+          let row = `<tr><td>${cs}</td><td>${v.count0}</td><td>${v.count1}</td>`;
+          if (hasSpeed) {
+            const a = spd[cs];
+            const dn = (a && a.rxN)   ? r1(accDownMbps(a))     : '–';
+            const up = (a && a.txN)   ? r1(accUpMbps(a))       : '–';
+            const pg = (a && a.pingN) ? Math.round(accPingMs(a)) : '–';
+            const n  = a ? a.tests : 0;
+            row += `<td>${dn}</td><td>${up}</td><td>${pg}</td><td>${n}</td>`;
+          }
+          return row + `</tr>`;
+        }).join('');
+        const nCols = hasSpeed ? 7 : 3;
+        if(!callsignRows) callsignRows = `<tr><td colspan='${nCols}' style='text-align:center'>None</td></tr>`;
+        const speedHead = hasSpeed ? `<th>&#8595;Mbps</th><th>&#8593;Mbps</th><th>Ping</th><th>n</th>` : '';
         let html = `<b>${geo}</b><br/>
         <span style='font-size:13px;'>${status0Label}: <b>${val.count0}</b> &nbsp;&nbsp; ${status1Label}: <b>${val.count1}</b></span><br/>
         <hr>
         <b>Breakdown by Callsign:</b><br>
-        <table style='font-size:12px;'><tr><th>Callsign</th><th>${status0Label}</th><th>${status1Label}</th></tr>
+        <table style='font-size:12px;'><tr><th>Callsign</th><th>${status0Label}</th><th>${status1Label}</th>${speedHead}</tr>
         ${callsignRows}
         </table>`;
-        // Speed test reports for this city (PosnType 922), folded into the connectivity hover
-        const sc = sAgg.byCity[geo];
-        if (sc && sc.tests) {
-          const scRows = Object.entries(sAgg.cityCallsign[geo] || {})
-            .sort((a,b)=> accDownMbps(b[1]) - accDownMbps(a[1]))
-            .map(([cs,a]) => `<tr><td>${cs}</td><td>${a.rxN?r1(accDownMbps(a)):'–'}</td><td>${a.txN?r1(accUpMbps(a)):'–'}</td><td>${a.pingN?Math.round(accPingMs(a)):'–'}</td><td>${a.tests}</td></tr>`)
-            .join('');
-          html += `<hr>
-          <b>Speed Tests</b> — Avg ↓ <b>${sc.rxN?r1(accDownMbps(sc)):'–'}</b> · ↑ <b>${sc.txN?r1(accUpMbps(sc)):'–'}</b> Mbps · Ping <b>${sc.pingN?Math.round(accPingMs(sc)):'–'}</b> ms (n=${sc.tests})<br>
-          <table style='font-size:12px;'><tr><th>Callsign</th><th>↓Mbps</th><th>↑Mbps</th><th>Ping</th><th>n</th></tr>
-          ${scRows}
-          </table>`;
-        }
         marker.bindTooltip(html, {sticky: true});
       });
 
