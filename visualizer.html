@@ -160,6 +160,14 @@
     </div>
     <div id="map"></div>
 
+    <div id="speedKpis" class="kpi-row">
+      <div class="kpi-card"><div class="kpi-label">Fleet Avg Download</div><div class="kpi-value" id="kpiDown">–<span class="kpi-unit">Mbps</span></div></div>
+      <div class="kpi-card"><div class="kpi-label">Fleet Avg Upload</div><div class="kpi-value" id="kpiUp">–<span class="kpi-unit">Mbps</span></div></div>
+      <div class="kpi-card"><div class="kpi-label">Fleet Avg Ping</div><div class="kpi-value" id="kpiPing">–<span class="kpi-unit">ms</span></div></div>
+      <div class="kpi-card"><div class="kpi-label">Speed Tests</div><div class="kpi-value" id="kpiCount">–</div></div>
+    </div>
+
+    <!-- Row 1: by City — cell connectivity (left) + speed test (right) -->
     <div class="flexrow">
       <div>
         <div class="chart-header">
@@ -175,6 +183,30 @@
         </div>
         <canvas id="geonameChart"></canvas>
       </div>
+      <div>
+        <div class="chart-header">
+          <h3 style="margin:0;">Speed Test by City</h3>
+          <div class="sort-wrap">
+            <label for="speedCitySort">Sort:</label>
+            <select id="speedCitySort" class="sort">
+              <option value="down_desc">High→Low (Download)</option>
+              <option value="up_desc">High→Low (Upload)</option>
+              <option value="ping_asc">Low→High (Ping)</option>
+              <option value="tests_desc">High→Low (# Tests)</option>
+            </select>
+            <span class="info-icon" tabindex="0">i
+              <span class="info-tooltip">
+                Cellular speed tests (position type 922) from master_results.csv. Throughput shown in Mbps (source values are kbps). Data-quality filter: individual values are excluded when download or upload &lt; 2000 kbps (2 Mbps) or ping &gt; 5000 ms. Respects the date, callsign, SIM and location filters above.
+              </span>
+            </span>
+          </div>
+        </div>
+        <canvas id="speedCityChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Row 2: by Callsign — cell connectivity (left) + speed test (right) -->
+    <div class="flexrow" style="margin-top:28px;">
       <div>
         <div class="chart-header">
           <h3 style="margin:0;">Cell status by Callsign</h3>
@@ -193,69 +225,6 @@
           </div>
         </div>
         <canvas id="callsignChart"></canvas>
-      </div>
-    </div>
-      <div id="google_translate_element"></div>
-
-      <script type="text/javascript">
-        function googleTranslateElementInit() {
-          new google.translate.TranslateElement(
-            {pageLanguage: 'en'},
-            'google_translate_element'
-          );
-        }
-      </script>
-
-    <!-- New charts row -->
-    <div class="flexrow" style="margin-top:28px;">
-      <div>
-        <div class="chart-header">
-          <h3 id="pctChartTitle">Cellular Connectivity %</h3>
-          <div id="granToggle" class="epoch-toggle" title="Data point density">
-            <span class="epoch-label" id="monthLabel">Monthly</span>
-            <input type="range" id="granSlider" min="0" max="1" step="1" value="0" aria-label="Monthly/Weekly granularity" />
-            <span class="epoch-label" id="weekLabel">Weekly</span>
-          </div>
-        </div>
-        <canvas id="dailyPctChart"></canvas>
-      </div>
-      <div>
-        <h3>Top 10 Callsigns by No Cell %</h3>
-        <canvas id="callsignPctChart"></canvas>
-      </div>
-    </div>
-
-    <!-- ===== Cellular Speed Tests (PosnType 922) ===== -->
-    <hr class="section-divider">
-    <h2 class="section-title">
-      Cellular Speed Tests
-      <span class="info-icon" tabindex="0">i
-        <span class="info-tooltip">
-          Cellular speed tests (position type 922) from master_results.csv. Throughput shown in Mbps (source values are kbps). Data-quality filter: individual values are excluded when download or upload &lt; 2000 kbps (2 Mbps) or ping &gt; 5000 ms. Respects the date, callsign, SIM and location filters above.
-        </span>
-      </span>
-    </h2>
-    <div id="speedKpis" class="kpi-row">
-      <div class="kpi-card"><div class="kpi-label">Fleet Avg Download</div><div class="kpi-value" id="kpiDown">–<span class="kpi-unit">Mbps</span></div></div>
-      <div class="kpi-card"><div class="kpi-label">Fleet Avg Upload</div><div class="kpi-value" id="kpiUp">–<span class="kpi-unit">Mbps</span></div></div>
-      <div class="kpi-card"><div class="kpi-label">Fleet Avg Ping</div><div class="kpi-value" id="kpiPing">–<span class="kpi-unit">ms</span></div></div>
-      <div class="kpi-card"><div class="kpi-label">Speed Tests</div><div class="kpi-value" id="kpiCount">–</div></div>
-    </div>
-    <div class="flexrow">
-      <div>
-        <div class="chart-header">
-          <h3 style="margin:0;">Speed Test by City</h3>
-          <div class="sort-wrap">
-            <label for="speedCitySort">Sort:</label>
-            <select id="speedCitySort" class="sort">
-              <option value="down_desc">High→Low (Download)</option>
-              <option value="up_desc">High→Low (Upload)</option>
-              <option value="ping_asc">Low→High (Ping)</option>
-              <option value="tests_desc">High→Low (# Tests)</option>
-            </select>
-          </div>
-        </div>
-        <canvas id="speedCityChart"></canvas>
       </div>
       <div>
         <div class="chart-header">
@@ -276,6 +245,35 @@
     <p id="speedEmptyMsg" style="display:none; color:#7a8aa0; font-style:italic; margin-top:10px;">
       No speed tests in the current filter selection.
     </p>
+
+    <!-- New charts row -->
+    <div class="flexrow" style="margin-top:28px;">
+      <div>
+        <div class="chart-header">
+          <h3 id="pctChartTitle">Cellular Connectivity %</h3>
+          <div id="granToggle" class="epoch-toggle" title="Data point density">
+            <span class="epoch-label" id="monthLabel">Monthly</span>
+            <input type="range" id="granSlider" min="0" max="1" step="1" value="0" aria-label="Monthly/Weekly granularity" />
+            <span class="epoch-label" id="weekLabel">Weekly</span>
+          </div>
+        </div>
+        <canvas id="dailyPctChart"></canvas>
+      </div>
+      <div>
+        <h3>Top 10 Callsigns by No Cell %</h3>
+        <canvas id="callsignPctChart"></canvas>
+      </div>
+    </div>
+      <div id="google_translate_element"></div>
+
+      <script type="text/javascript">
+        function googleTranslateElementInit() {
+          new google.translate.TranslateElement(
+            {pageLanguage: 'en'},
+            'google_translate_element'
+          );
+        }
+      </script>
 
   <script>
     // Navbar highlight logic
