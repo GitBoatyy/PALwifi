@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <!-- Hidden deep-dive statistics page. Not linked from the navbar of other pages. Reach via direct URL: .../stats.html -->
+  <title>PAL Fleet — Speed Test Statistics (Deep Dive)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --navy:#164778; --navy2:#2362a1; --ink:#1f2a37; --muted:#5b6b82;
+      --line:#e2e8f2; --card:#f5f8fc; --down:#2b8cbe; --up:#7bccc4; --ping:#f0932b;
+      --bad:#e83a3a; --good:#1bc541; --box:#2b8cbe;
+    }
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,Segoe UI,Roboto,sans-serif; margin:0; background:#fafbfc; color:var(--ink);}
+    #navbar{background:var(--navy); color:#fff; padding:0 24px; height:48px; display:flex; align-items:center;}
+    #navbar a{color:#fff; text-decoration:none; margin-right:18px; font-weight:600; font-size:1.05em; padding:6px 12px; border-radius:6px; transition:background .2s;}
+    #navbar a:hover, #navbar a.active{background:var(--navy2);}
+    #navbar .tag{margin-left:auto; font-size:.78em; opacity:.7; font-weight:600; letter-spacing:.05em;}
+    #container{max-width:1380px; margin:26px auto; background:#fff; padding:22px 30px 40px; border-radius:12px; box-shadow:0 2px 6px #0001;}
+    h1{font-weight:800; font-size:1.7em; margin:0 0 2px; color:var(--navy);}
+    .subtitle{color:var(--muted); font-size:.95em; margin:0 0 18px;}
+    /* Controls */
+    #controls{display:flex; gap:16px 22px; align-items:flex-end; flex-wrap:wrap; padding:14px 16px; background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:22px;}
+    .ctl{display:flex; flex-direction:column; gap:4px;}
+    .ctl label{font-size:.76em; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+    .ctl input[type=date], .ctl select, .ctl input[type=number]{border:1px solid #c4cede; border-radius:7px; padding:6px 9px; font-size:.95em; background:#fff; color:var(--ink);}
+    .segmented{display:inline-flex; border:1px solid #c4cede; border-radius:8px; overflow:hidden;}
+    .segmented button{border:none; background:#fff; padding:7px 13px; font-size:.92em; font-weight:600; color:var(--muted); cursor:pointer;}
+    .segmented button.active{background:var(--navy); color:#fff;}
+    .chk{display:flex; align-items:center; gap:7px; font-size:.9em; font-weight:600; color:var(--ink); padding-bottom:6px;}
+    .chk input{transform:scale(1.15);}
+    button.ghost{border:1px solid #c4cede; background:#fff; border-radius:7px; padding:6px 12px; font-weight:600; color:var(--navy); cursor:pointer;}
+    button.ghost:hover{background:#eef3fa;}
+    /* KPI cards */
+    .kpi-row{display:flex; gap:14px; flex-wrap:wrap; margin:6px 0 26px;}
+    .kpi-card{flex:1; min-width:140px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px;}
+    .kpi-card .kpi-label{font-size:.74em; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+    .kpi-card .kpi-value{font-size:1.7em; font-weight:800; color:var(--navy); line-height:1.15; margin-top:2px;}
+    .kpi-card .kpi-unit{font-size:.42em; font-weight:700; color:#7a8aa0; margin-left:3px;}
+    .kpi-card .kpi-sub{font-size:.75em; color:var(--muted); margin-top:2px;}
+    /* Sections */
+    h2.section{font-weight:800; color:var(--navy); font-size:1.18em; margin:30px 0 4px; padding-top:6px; border-top:2px solid var(--line);}
+    .section-note{color:var(--muted); font-size:.86em; margin:0 0 12px;}
+    .flexrow{display:flex; gap:26px; flex-wrap:wrap;}
+    .flexrow > div{flex:1; min-width:320px;}
+    canvas{max-width:100%;}
+    /* Tables */
+    .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:10px; margin-top:8px;}
+    table.stats{border-collapse:collapse; width:100%; font-size:.86em; min-width:900px;}
+    table.stats th, table.stats td{padding:7px 10px; text-align:right; border-bottom:1px solid #eef1f5; white-space:nowrap;}
+    table.stats th{background:#eef3fa; color:var(--navy); font-weight:700; position:sticky; top:0; cursor:pointer; user-select:none;}
+    table.stats th:first-child, table.stats td:first-child{text-align:left; position:sticky; left:0; background:#fff;}
+    table.stats th:first-child{background:#eef3fa;}
+    table.stats tbody tr:hover td{background:#f7fafd;}
+    table.stats tbody tr:hover td:first-child{background:#eef6fd;}
+    table.stats th.sorted::after{content:" \25BC"; font-size:.8em;}
+    table.stats th.sorted.asc::after{content:" \25B2";}
+    td.flag{color:var(--bad); font-weight:700;}
+    .fleet-row{background:#fff8e6 !important; font-weight:700;}
+    /* Box plot svg */
+    #boxplotWrap{width:100%; overflow-x:auto;}
+    .bp-label{font:600 12px sans-serif; fill:var(--ink);}
+    .bp-n{font:500 11px sans-serif; fill:var(--muted);}
+    .bp-axis{font:500 11px sans-serif; fill:var(--muted);}
+    .info{font-size:.82em; color:var(--muted); background:#f0f4f9; border-left:3px solid var(--navy2); padding:8px 12px; border-radius:0 6px 6px 0; margin:10px 0;}
+    .legend-dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin:0 3px 0 10px; vertical-align:middle;}
+    #emptyMsg{display:none; color:var(--muted); font-style:italic; padding:24px; text-align:center;}
+    @media(max-width:900px){ #container{padding:14px 4vw;} .flexrow>div{min-width:100%;} }
+  </style>
+</head>
+<body>
+  <nav id="navbar">
+    <a href="index.html">Dashboard</a>
+    <a href="map.html">Wifi Map</a>
+    <a href="visualizer.html">Cell Map</a>
+    <span class="tag">SPEED TEST · STATISTICAL DEEP DIVE</span>
+  </nav>
+
+  <div id="container">
+    <h1>Speed Test Statistics — Deep Dive</h1>
+    <p class="subtitle">
+      Full distributional analysis of cellular speed tests (position type 922) by location and aircraft:
+      sample size, central tendency, dispersion, percentiles and outlier detection.
+      Throughput derived from raw kbps values; ping in ms.
+    </p>
+
+    <!-- Controls -->
+    <div id="controls">
+      <div class="ctl">
+        <label>Metric</label>
+        <div class="segmented" id="metricSeg">
+          <button data-v="down" class="active">Download</button>
+          <button data-v="up">Upload</button>
+          <button data-v="ping">Ping</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <label>Group by</label>
+        <div class="segmented" id="groupSeg">
+          <button data-v="geo" class="active">Location</button>
+          <button data-v="cs">Aircraft</button>
+        </div>
+      </div>
+      <div class="ctl">
+        <label for="startDate">Start date</label>
+        <input type="date" id="startDate">
+      </div>
+      <div class="ctl">
+        <label for="endDate">End date</label>
+        <input type="date" id="endDate">
+      </div>
+      <div class="ctl">
+        <label for="minN">Min sample size</label>
+        <input type="number" id="minN" min="1" max="200" value="5" style="width:82px;">
+      </div>
+      <label class="chk"><input type="checkbox" id="excludeInvalid" checked> Exclude invalid readings</label>
+      <button class="ghost" id="resetBtn">Reset</button>
+    </div>
+
+    <div class="info" id="qualityNote"></div>
+
+    <!-- Fleet KPIs -->
+    <div class="kpi-row" id="kpiRow"></div>
+
+    <!-- Distribution histogram -->
+    <h2 class="section">Distribution — <span class="metricName"></span></h2>
+    <p class="section-note">
+      Histogram of every included reading in the current selection.
+      <span style="color:var(--navy);font-weight:700;">Solid line = mean</span>,
+      <span style="color:var(--bad);font-weight:700;">dashed line = median</span>.
+      A long right tail (mean &gt; median) indicates positive skew.
+    </p>
+    <canvas id="histChart" height="110"></canvas>
+
+    <!-- Box plots -->
+    <h2 class="section">Box &amp; Whisker by <span class="groupName"></span></h2>
+    <p class="section-note">
+      Box = interquartile range (P25–P75), line inside = median, diamond = mean, whiskers = Tukey fences
+      (1.5×IQR), <span style="color:var(--bad);font-weight:700;">red dots = statistical outliers</span>.
+      Groups with fewer than the minimum sample size are hidden. Sorted by median.
+    </p>
+    <div id="boxplotWrap"></div>
+
+    <!-- Full stats table -->
+    <h2 class="section">Full Statistics by <span class="groupName"></span></h2>
+    <p class="section-note">Click any column header to sort. The highlighted top row is the fleet total across the whole selection.</p>
+    <div class="tbl-wrap">
+      <table class="stats" id="statsTable"></table>
+    </div>
+
+    <!-- Outlier detail -->
+    <h2 class="section">Outlier &amp; Anomaly Detail</h2>
+    <p class="section-note">
+      Individual readings flagged as statistical outliers (beyond 1.5×IQR within their group) or, when included,
+      out-of-range readings (throughput &lt; 2 Mbps or ping &gt; 5000 ms — typically failed / partial tests).
+    </p>
+    <div class="tbl-wrap">
+      <table class="stats" id="outlierTable"></table>
+    </div>
+
+    <p id="emptyMsg">No speed tests match the current filter selection.</p>
+  </div>
+
+<script>
+/* ===================== Config & helpers ===================== */
+const SPEED_MIN_KBPS = 2000;   // throughput readings below this are "invalid" (failed/partial test)
+const PING_MAX_MS    = 5000;   // ping readings above this are "invalid" (timeout)
+const KBPS_TO_MBPS   = 1000;
+
+// Geoname canonicalisation — matches the Cell Map page so locations line up.
+const geonameAliases = {
+  "Montreal/Mirabel Intl":"Mirabel","Montreal/St-Hubert":"Mirabel","Montreal/Cartierville":"Montreal",
+  "Montreal/Dorval Intl":"Montreal","Halifax Intl":"Halifax","CHC Heliport":"Halifax","Halifax/Shearwater":"Halifax",
+  "Ottawa/Gatineau":"Ottawa","Ottawa Int":"Ottawa","Ottawa/Rockcliffe":"Ottawa","SGL Hanger (Ottawa)":"Ottawa",
+  "Quebec":"Quebec","Valcartier":"Quebec","Sept-Iles":"Sept-Iles","Wabush":"Wabush","St Johns":"St Johns",
+  "Deer Lake":"Deer Lake","Goose Bay":"Goose Bay","Gander Intl":"Gander Intl","Bagotville":"Bagotville",
+  "Chicoutimi/St-Honore":"Chicoutimi/St-Honore","Midland/Huronia":"Midland/Huronia","Moncton":"Moncton",
+  "Matane":"Matane","Baie-Comeau":"Matane","Forestville":"Matane",
+  "Gen Edward Lawrence Logan Intl - Boston":"Boston","Newark Intl":"Newark","Stephenville":"Stephenville",
+  "Gaspe":"Gaspe","Churchill Falls":"Churchill Falls","Greenwood":"Greenwood","Trois-Rivieres":"Trois-Rivieres",
+  "Lourdes-de-Blanc-Sablon":"Lourdes-de-Blanc-Sablon","Nain":"Nain","Iles-de-la-Madeleine":"Iles-de-la-Madeleine","Sydney":"Sydney"
+};
+const canonicalGeoname = g => geonameAliases[g] || g;
+
+// Metric definitions
+const METRICS = {
+  down: {label:"Download", short:"↓", unit:"Mbps", color:"#2b8cbe", better:"high",
+         get:r=>r.rx/KBPS_TO_MBPS, valid:r=>r.rx>=SPEED_MIN_KBPS,
+         invalidReason:r=>r.rx<SPEED_MIN_KBPS ? "Download < 2 Mbps" : null},
+  up:   {label:"Upload", short:"↑", unit:"Mbps", color:"#3a9d8c", better:"high",
+         get:r=>r.tx/KBPS_TO_MBPS, valid:r=>r.tx>=SPEED_MIN_KBPS,
+         invalidReason:r=>r.tx<SPEED_MIN_KBPS ? "Upload < 2 Mbps" : null},
+  ping: {label:"Ping", short:"", unit:"ms", color:"#f0932b", better:"low",
+         get:r=>r.ping, valid:r=>r.ping>=0 && r.ping<=PING_MAX_MS,
+         invalidReason:r=>(r.ping<0||r.ping>PING_MAX_MS) ? "Ping > 5000 ms" : null}
+};
+
+// ---- Statistics primitives ----
+function quantile(sorted, p){           // linear interpolation (numpy 'linear' / Excel PERCENTILE.INC)
+  const n = sorted.length;
+  if(!n) return NaN;
+  if(n===1) return sorted[0];
+  const idx = p*(n-1), lo = Math.floor(idx), frac = idx-lo;
+  const hi = Math.min(lo+1, n-1);
+  return sorted[lo] + frac*(sorted[hi]-sorted[lo]);
+}
+const sum  = a => a.reduce((x,y)=>x+y,0);
+const mean = a => a.length ? sum(a)/a.length : NaN;
+function variance(a, m){                 // sample variance (n-1)
+  const n=a.length; if(n<2) return 0;
+  m = (m===undefined)?mean(a):m;
+  return a.reduce((s,x)=>s+(x-m)*(x-m),0)/(n-1);
+}
+const stdev = (a,m) => Math.sqrt(variance(a,m));
+function mode(a, decimals){               // mode of rounded values; null if every value unique
+  const f=10**decimals, counts=new Map();
+  let best=null, bestC=1;
+  a.forEach(x=>{ const k=Math.round(x*f)/f; const c=(counts.get(k)||0)+1; counts.set(k,c); if(c>bestC){bestC=c; best=k;} });
+  return bestC>1 ? {value:best, count:bestC} : null;
+}
+
+// Compute a full stats object for one numeric array
+function describe(values){
+  const a=[...values].sort((x,y)=>x-y), n=a.length;
+  if(!n) return null;
+  const m=mean(a), q1=quantile(a,.25), q2=quantile(a,.5), q3=quantile(a,.75);
+  const iqr=q3-q1, lo=q1-1.5*iqr, hi=q3+1.5*iqr;
+  const outIdx=[]; a.forEach((x,i)=>{ if(x<lo||x>hi) outIdx.push(i); });
+  const sd=stdev(a,m);
+  return {
+    n, mean:m, median:q2, min:a[0], max:a[n-1],
+    p25:q1, p75:q3, p90:quantile(a,.90), p95:quantile(a,.95),
+    sd, variance:variance(a,m), cv: m ? (sd/m)*100 : 0,
+    iqr, fenceLo:lo, fenceHi:hi, outliers:outIdx.length, range:a[n-1]-a[0], sorted:a
+  };
+}
+
+/* ===================== CSV loading ===================== */
+function parseCSV(csv){
+  const lines=csv.trim().split('\n');
+  const headers=lines[0].split(',').map(h=>h.trim());
+  const out=[];
+  for(let i=1;i<lines.length;i++){
+    const vals=lines[i].split(',');
+    const o={};
+    headers.forEach((h,j)=>o[h]=vals[j]);
+    out.push(o);
+  }
+  return out;
+}
+function parseSpeedRow(row){
+  const d=(row.data||row.Data||"").toString();
+  if(!/TX:/i.test(d)) return null;
+  const tx=d.match(/TX:\s*(-?\d+(?:\.\d+)?)/i);
+  const rx=d.match(/RX:\s*(-?\d+(?:\.\d+)?)/i);
+  const pg=d.match(/Ping:\s*(-?\d+(?:\.\d+)?)/i);
+  if(!tx||!rx||!pg) return null;
+  return {tx:parseFloat(tx[1]), rx:parseFloat(rx[1]), ping:parseFloat(pg[1])};
+}
+
+let ALL = [];          // [{cs, geo, tx, rx, ping, dateStr}]
+let DATE_MIN="", DATE_MAX="";
+
+// UI state
+const state = {metric:"down", groupBy:"geo", excludeInvalid:true, minN:5,
+               sortKey:"n", sortDir:-1};
+
+/* ===================== Core build ===================== */
+function currentRows(){
+  const s=document.getElementById('startDate').value;
+  const e=document.getElementById('endDate').value;
+  return ALL.filter(r=>{
+    if(s && r.dateStr < s) return false;
+    if(e && r.dateStr > e) return false;
+    return true;
+  });
+}
+
+function build(){
+  const cfg=METRICS[state.metric];
+  const groupField=state.groupBy;               // 'geo' | 'cs'
+  const rows=currentRows();
+
+  // Split into included values and invalid readings for THIS metric
+  const groups={};      // key -> [{v, row}]
+  const fleetVals=[];
+  const invalidRows=[]; // {row, reason}
+  rows.forEach(r=>{
+    const v=cfg.get(r);
+    const valid=cfg.valid(r);
+    if(state.excludeInvalid && !valid){
+      invalidRows.push({row:r, reason:cfg.invalidReason(r)||"Out of range"});
+      return;
+    }
+    const key=r[groupField]||"Unknown";
+    (groups[key]=groups[key]||[]).push({v, row:r});
+    fleetVals.push(v);
+  });
+
+  const emptyMsg=document.getElementById('emptyMsg');
+  if(fleetVals.length===0){
+    emptyMsg.style.display='block';
+    document.getElementById('kpiRow').innerHTML='';
+    document.getElementById('statsTable').innerHTML='';
+    document.getElementById('outlierTable').innerHTML='';
+    document.getElementById('boxplotWrap').innerHTML='';
+    if(window._hist) window._hist.destroy();
+    document.getElementById('qualityNote').textContent='';
+    return;
+  }
+  emptyMsg.style.display='none';
+
+  // Fleet describe
+  const fleet=describe(fleetVals);
+
+  // Per-group describe (+ collect outlier rows)
+  const groupStats={};           // key -> {stats, items}
+  const outlierRows=[];          // {row, value, group, type, detail}
+  Object.entries(groups).forEach(([key, items])=>{
+    const vals=items.map(i=>i.v);
+    const st=describe(vals);
+    groupStats[key]={stats:st, items};
+    // flag statistical outliers within this group
+    items.forEach(it=>{
+      if(it.v < st.fenceLo || it.v > st.fenceHi){
+        const dir = it.v>st.fenceHi ? "high" : "low";
+        const z = st.sd ? (it.v-st.mean)/st.sd : 0;
+        outlierRows.push({row:it.row, value:it.v, group:key, type:"Statistical",
+          detail:`${dir} · ${z>=0?'+':''}${z.toFixed(1)}σ`});
+      }
+    });
+  });
+  // Add invalid readings to outlier detail (they were excluded, but we surface them)
+  invalidRows.forEach(ir=>{
+    outlierRows.push({row:ir.row, value:cfg.get(ir.row), group:ir.row[groupField]||"Unknown",
+      type:"Invalid", detail:ir.reason});
+  });
+
+  renderQualityNote(rows.length, fleetVals.length, invalidRows.length);
+  renderKPIs(fleet, groupStats, cfg);
+  renderHistogram(fleetVals, fleet, cfg);
+  renderBoxplots(groupStats, cfg);
+  renderTable(groupStats, fleet, cfg);
+  renderOutliers(outlierRows, cfg);
+  syncLabels(cfg);
+}
+
+/* ===================== Renderers ===================== */
+function fmt(x, d){ return (x===undefined||x===null||isNaN(x)) ? "–" : x.toFixed(d); }
+
+function syncLabels(cfg){
+  document.querySelectorAll('.metricName').forEach(e=>e.textContent=`${cfg.label} (${cfg.unit})`);
+  document.querySelectorAll('.groupName').forEach(e=>e.textContent = state.groupBy==="geo" ? "Location" : "Aircraft");
+}
+
+function renderQualityNote(total, included, invalid){
+  const cfg=METRICS[state.metric];
+  const el=document.getElementById('qualityNote');
+  const pct = total ? (invalid/total*100) : 0;
+  if(state.excludeInvalid){
+    el.innerHTML = `Analysing <b>${included}</b> valid ${cfg.label.toLowerCase()} readings. `
+      + `<b>${invalid}</b> reading${invalid===1?'':'s'} (${fmt(pct,1)}%) excluded as out-of-range `
+      + `(${cfg.label} ${cfg.better==='low'?'&gt; 5000 ms':'&lt; 2 Mbps'}) — listed in the outlier detail below. `
+      + `Toggle “Exclude invalid readings” off to include them.`;
+  } else {
+    el.innerHTML = `Analysing <b>all ${included}</b> ${cfg.label.toLowerCase()} readings including out-of-range values. `
+      + `Statistics may be skewed by failed / partial tests.`;
+  }
+}
+
+function renderKPIs(fleet, groupStats, cfg){
+  const d = cfg.unit==="ms" ? 0 : 2;
+  const skew = fleet.mean>fleet.median ? "right-skewed" : (fleet.mean<fleet.median ? "left-skewed" : "symmetric");
+  // best & worst group by mean (respect metric direction), min n
+  const elig=Object.entries(groupStats).filter(([,g])=>g.stats.n>=state.minN);
+  let best="–", worst="–";
+  if(elig.length){
+    const sorted=[...elig].sort((a,b)=> a[1].stats.mean-b[1].stats.mean);
+    const lowG=sorted[0], highG=sorted[sorted.length-1];
+    if(cfg.better==="high"){ best=`${highG[0]} (${fmt(highG[1].stats.mean,d)})`; worst=`${lowG[0]} (${fmt(lowG[1].stats.mean,d)})`; }
+    else { best=`${lowG[0]} (${fmt(lowG[1].stats.mean,d)})`; worst=`${highG[0]} (${fmt(highG[1].stats.mean,d)})`; }
+  }
+  const cards=[
+    {l:"Sample size", v:fleet.n, u:"tests", s:`${Object.keys(groupStats).length} ${state.groupBy==='geo'?'locations':'aircraft'}`},
+    {l:`Mean ${cfg.label}`, v:fmt(fleet.mean,d), u:cfg.unit, s:`± ${fmt(fleet.sd,d)} SD`},
+    {l:"Median", v:fmt(fleet.median,d), u:cfg.unit, s:skew},
+    {l:"P95", v:fmt(fleet.p95,d), u:cfg.unit, s:`P5–P95 spread`},
+    {l:"Std deviation", v:fmt(fleet.sd,d), u:cfg.unit, s:`CV ${fmt(fleet.cv,0)}%`},
+    {l:"Statistical outliers", v:fleet.outliers, u:"", s:`fleet-level, ${fmt(fleet.outliers/fleet.n*100,1)}%`},
+    {l:cfg.better==="high"?"Best group":"Best group", v:best.split(' (')[0], u:"", s:best.includes('(')?best.match(/\(([^)]+)\)/)[1]+' '+cfg.unit:''},
+    {l:"Weakest group", v:worst.split(' (')[0], u:"", s:worst.includes('(')?worst.match(/\(([^)]+)\)/)[1]+' '+cfg.unit:''}
+  ];
+  document.getElementById('kpiRow').innerHTML = cards.map(c=>`
+    <div class="kpi-card">
+      <div class="kpi-label">${c.l}</div>
+      <div class="kpi-value">${c.v}${c.u?`<span class="kpi-unit">${c.u}</span>`:''}</div>
+      <div class="kpi-sub">${c.s||''}</div>
+    </div>`).join('');
+}
+
+function renderHistogram(values, fleet, cfg){
+  const d = cfg.unit==="ms" ? 0 : 1;
+  // Freedman–Diaconis bin width, clamped to a sensible bin count
+  const n=values.length, iqr=fleet.iqr || (fleet.max-fleet.min)/2;
+  let bw = iqr>0 ? 2*iqr/Math.cbrt(n) : (fleet.max-fleet.min)/10;
+  let nbins = bw>0 ? Math.ceil((fleet.max-fleet.min)/bw) : 12;
+  nbins = Math.max(8, Math.min(30, nbins));
+  const min=fleet.min, max=fleet.max, span=(max-min)||1, step=span/nbins;
+  const counts=new Array(nbins).fill(0);
+  values.forEach(v=>{ let b=Math.floor((v-min)/step); if(b>=nbins) b=nbins-1; if(b<0) b=0; counts[b]++; });
+  const labels=counts.map((_,i)=>{
+    const a=min+i*step, b=min+(i+1)*step;
+    return cfg.unit==="ms" ? `${Math.round(a)}` : a.toFixed(a<10?1:0);
+  });
+  if(window._hist) window._hist.destroy();
+  const ctx=document.getElementById('histChart').getContext('2d');
+  window._hist=new Chart(ctx,{
+    type:'bar',
+    data:{labels, datasets:[{label:`# tests`, data:counts, backgroundColor:cfg.color+'cc',
+      borderColor:cfg.color, borderWidth:1, barPercentage:1, categoryPercentage:1}]},
+    options:{
+      responsive:true, animation:false,
+      plugins:{ legend:{display:false},
+        tooltip:{callbacks:{
+          title:items=>{ const i=items[0].dataIndex; const a=min+i*step, b=min+(i+1)*step;
+            return `${a.toFixed(d)} – ${b.toFixed(d)} ${cfg.unit}`; },
+          label:it=>`${it.raw} tests`
+        }}},
+      scales:{
+        x:{title:{display:true, text:`${cfg.label} (${cfg.unit})`}, grid:{display:false},
+           ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:14}},
+        y:{title:{display:true, text:'# tests'}, beginAtZero:true}
+      }
+    },
+    plugins:[{
+      id:'mmlines',
+      afterDatasetsDraw(chart){
+        const {ctx, chartArea:{left,right,top,bottom}}=chart;
+        const w=right-left;
+        const px=v=> left + ((v-min)/span)*w;
+        const draw=(v,color,dash,label)=>{
+          const x=px(v); if(x<left||x>right) return;
+          ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash);
+          ctx.beginPath(); ctx.moveTo(x,top); ctx.lineTo(x,bottom); ctx.stroke();
+          ctx.setLineDash([]); ctx.fillStyle=color; ctx.font='700 11px sans-serif';
+          ctx.textAlign = x>right-60?'right':'left';
+          ctx.fillText(label, x + (x>right-60?-4:4), top+11);
+          ctx.restore();
+        };
+        draw(fleet.mean, '#164778', [], `mean ${fleet.mean.toFixed(d)}`);
+        draw(fleet.median, '#e83a3a', [5,4], `median ${fleet.median.toFixed(d)}`);
+      }
+    }]
+  });
+}
+
+function renderBoxplots(groupStats, cfg){
+  const d = cfg.unit==="ms" ? 0 : 1;
+  let entries=Object.entries(groupStats).filter(([,g])=>g.stats.n>=state.minN);
+  const wrap=document.getElementById('boxplotWrap');
+  if(!entries.length){ wrap.innerHTML=`<p class="section-note">No ${state.groupBy==='geo'?'location':'aircraft'} has ≥ ${state.minN} readings for this metric.</p>`; return; }
+  // sort by median (better metrics on top)
+  entries.sort((a,b)=> cfg.better==="high" ? b[1].stats.median-a[1].stats.median : a[1].stats.median-b[1].stats.median);
+
+  // global scale across whiskers + outliers
+  let gMin=Infinity, gMax=-Infinity;
+  entries.forEach(([,g])=>{
+    const s=g.stats;
+    const whiskLo=Math.max(s.min, s.fenceLo), whiskHi=Math.min(s.max, s.fenceHi);
+    gMin=Math.min(gMin, s.min, whiskLo); gMax=Math.max(gMax, s.max, whiskHi);
+  });
+  if(gMin===gMax){ gMax=gMin+1; }
+  const pad=(gMax-gMin)*0.04; gMin-=pad; gMax+=pad;
+
+  const rowH=30, top=14, left=150, right=40, W=1080, plotW=W-left-right;
+  const H=top + entries.length*rowH + 34;
+  const X = v => left + ((v-gMin)/(gMax-gMin))*plotW;
+
+  // axis ticks
+  const ticks=5, tickVals=[];
+  for(let i=0;i<=ticks;i++) tickVals.push(gMin+(gMax-gMin)*i/ticks);
+
+  let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:760px" xmlns="http://www.w3.org/2000/svg">`;
+  // gridlines + axis labels
+  tickVals.forEach(tv=>{
+    const x=X(tv);
+    svg+=`<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${top+entries.length*rowH}" stroke="#eef1f5"/>`;
+    svg+=`<text class="bp-axis" x="${x.toFixed(1)}" y="${H-14}" text-anchor="middle">${tv.toFixed(d)}</text>`;
+  });
+  svg+=`<text class="bp-axis" x="${left+plotW/2}" y="${H-1}" text-anchor="middle" font-weight="700">${cfg.label} (${cfg.unit})</text>`;
+
+  entries.forEach(([key,g],i)=>{
+    const s=g.stats;
+    const cy=top+i*rowH+rowH/2;
+    const whiskLo=Math.max(s.min, s.fenceLo), whiskHi=Math.min(s.max, s.fenceHi);
+    const x1=X(whiskLo), x2=X(whiskHi), xq1=X(s.p25), xq3=X(s.p75), xmed=X(s.median), xmean=X(s.mean);
+    const bh=15;
+    // label
+    svg+=`<text class="bp-label" x="8" y="${cy+3}">${key.length>20?key.slice(0,19)+'…':key}</text>`;
+    svg+=`<text class="bp-n" x="${left-8}" y="${cy+3}" text-anchor="end">n=${s.n}</text>`;
+    // whisker line
+    svg+=`<line x1="${x1.toFixed(1)}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${cy}" stroke="#7a8aa0" stroke-width="1.5"/>`;
+    svg+=`<line x1="${x1.toFixed(1)}" y1="${cy-5}" x2="${x1.toFixed(1)}" y2="${cy+5}" stroke="#7a8aa0" stroke-width="1.5"/>`;
+    svg+=`<line x1="${x2.toFixed(1)}" y1="${cy-5}" x2="${x2.toFixed(1)}" y2="${cy+5}" stroke="#7a8aa0" stroke-width="1.5"/>`;
+    // box
+    svg+=`<rect x="${xq1.toFixed(1)}" y="${(cy-bh/2).toFixed(1)}" width="${Math.max(1,xq3-xq1).toFixed(1)}" height="${bh}" fill="${cfg.color}33" stroke="${cfg.color}" stroke-width="1.5" rx="2"/>`;
+    // median
+    svg+=`<line x1="${xmed.toFixed(1)}" y1="${(cy-bh/2).toFixed(1)}" x2="${xmed.toFixed(1)}" y2="${(cy+bh/2).toFixed(1)}" stroke="#164778" stroke-width="2.5"/>`;
+    // mean diamond
+    const ms=4;
+    svg+=`<path d="M ${xmean.toFixed(1)} ${(cy-ms).toFixed(1)} L ${(xmean+ms).toFixed(1)} ${cy} L ${xmean.toFixed(1)} ${(cy+ms).toFixed(1)} L ${(xmean-ms).toFixed(1)} ${cy} Z" fill="#fff" stroke="#164778" stroke-width="1.5"/>`;
+    // outlier dots
+    g.items.forEach(it=>{ if(it.v<s.fenceLo||it.v>s.fenceHi){ svg+=`<circle cx="${X(it.v).toFixed(1)}" cy="${cy}" r="3" fill="#e83a3a" fill-opacity="0.75"/>`; } });
+    // hover title
+    svg+=`<rect x="${left}" y="${(cy-rowH/2).toFixed(1)}" width="${plotW}" height="${rowH}" fill="transparent"><title>${key}\nn=${s.n}  mean=${s.mean.toFixed(d)}  median=${s.median.toFixed(d)}\nP25=${s.p25.toFixed(d)}  P75=${s.p75.toFixed(d)}  IQR=${s.iqr.toFixed(d)}\nmin=${s.min.toFixed(d)}  max=${s.max.toFixed(d)}  outliers=${s.outliers}</title></rect>`;
+  });
+  svg+=`</svg>`;
+  wrap.innerHTML=svg;
+}
+
+const COLS=[
+  {k:"name",  t:"", d:0, txt:true},
+  {k:"n",     t:"n", d:0},
+  {k:"mean",  t:"Mean", d:2},
+  {k:"median",t:"Median", d:2},
+  {k:"modeV", t:"Mode", d:2},
+  {k:"sd",    t:"Std Dev", d:2},
+  {k:"variance",t:"Variance", d:1},
+  {k:"cv",    t:"CV %", d:0},
+  {k:"min",   t:"Min", d:2},
+  {k:"p25",   t:"P25", d:2},
+  {k:"p75",   t:"P75", d:2},
+  {k:"p90",   t:"P90", d:2},
+  {k:"p95",   t:"P95", d:2},
+  {k:"max",   t:"Max", d:2},
+  {k:"iqr",   t:"IQR", d:2},
+  {k:"outliers",t:"Outliers", d:0}
+];
+
+function renderTable(groupStats, fleet, cfg){
+  const dd = cfg.unit==="ms" ? 0 : 2;
+  const modeDec = cfg.unit==="ms" ? 0 : 1;
+  // build row objects
+  let rows=Object.entries(groupStats).filter(([,g])=>g.stats.n>=state.minN).map(([key,g])=>{
+    const s=g.stats; const mo=mode(g.items.map(i=>i.v), modeDec);
+    return {name:key, ...s, modeV: mo?mo.value:NaN, modeCount: mo?mo.count:0};
+  });
+  // sort
+  const key=state.sortKey, dir=state.sortDir;
+  rows.sort((a,b)=>{
+    if(key==="name") return dir*String(a.name).localeCompare(String(b.name));
+    return dir*((a[key] - b[key]) || 0);
+  });
+
+  const th=COLS.map(c=>{
+    const sorted = c.k===state.sortKey ? `sorted ${state.sortDir===1?'asc':''}` : '';
+    const title = c.txt ? (state.groupBy==='geo'?'Location':'Aircraft') : c.t
+      + (['mean','median','modeV','sd','min','p25','p75','p90','p95','max','iqr'].includes(c.k)?`<br><span style="font-weight:500;font-size:.82em;color:#7a8aa0">${cfg.unit}</span>`:'');
+    return `<th class="${sorted}" data-k="${c.k}">${title}</th>`;
+  }).join('');
+
+  const fleetRow = `<tr class="fleet-row"><td>FLEET (all${state.excludeInvalid?' valid':''})</td>`+
+    COLS.slice(1).map(c=>{
+      if(c.k==="modeV"){ const mo=mode(fleetVals_cache, modeDec); return `<td>${mo?fmt(mo.value,modeDec):'–'}</td>`; }
+      const val=fleet[c.k];
+      const dec = c.k==="variance"?1 : (c.k==="cv"||c.k==="n"||c.k==="outliers")?0 : dd;
+      return `<td${c.k==="outliers"&&val>0?' class="flag"':''}>${c.k==="n"||c.k==="outliers"?val:fmt(val,dec)}</td>`;
+    }).join('')+`</tr>`;
+
+  const body=rows.map(r=>{
+    return `<tr><td>${r.name}</td>`+COLS.slice(1).map(c=>{
+      let val=r[c.k];
+      let dec = c.k==="variance"?1 : (c.k==="cv"||c.k==="n"||c.k==="outliers")?0 : (c.k==="modeV"?modeDec:dd);
+      const cls = (c.k==="outliers"&&val>0) ? ' class="flag"' : '';
+      const disp = (c.k==="n"||c.k==="outliers") ? val : fmt(val,dec);
+      return `<td${cls}>${disp}</td>`;
+    }).join('')+`</tr>`;
+  }).join('');
+
+  document.getElementById('statsTable').innerHTML =
+    `<thead><tr>${th}</tr></thead><tbody>${fleetRow}${body}</tbody>`;
+
+  // header click sort
+  document.querySelectorAll('#statsTable th').forEach(thEl=>{
+    thEl.onclick=()=>{
+      const k=thEl.dataset.k;
+      if(state.sortKey===k) state.sortDir*=-1;
+      else { state.sortKey=k; state.sortDir = k==="name"?1:-1; }
+      build();
+    };
+  });
+}
+
+let fleetVals_cache=[];   // used by fleet mode cell
+function renderOutliers(outlierRows, cfg){
+  const d = cfg.unit==="ms" ? 0 : 2;
+  const groupLabel = state.groupBy==='geo'?'Location':'Aircraft';
+  // sort: invalid first? show by absolute severity then date. Keep statistical then invalid.
+  outlierRows.sort((a,b)=>{
+    if(a.type!==b.type) return a.type==="Statistical"?-1:1;
+    return (b.value-a.value);
+  });
+  const header=`<thead><tr>
+    <th style="text-align:left">Type</th>
+    <th style="text-align:left">${groupLabel}</th>
+    <th style="text-align:left">Aircraft</th>
+    <th style="text-align:left">Location</th>
+    <th style="text-align:left">Date/Time</th>
+    <th>${cfg.label} (${cfg.unit})</th>
+    <th style="text-align:left">Detail</th>
+  </tr></thead>`;
+  if(!outlierRows.length){
+    document.getElementById('outlierTable').innerHTML=header+`<tbody><tr><td colspan="7" style="text-align:center;color:#7a8aa0">No outliers or invalid readings in this selection.</td></tr></tbody>`;
+    return;
+  }
+  const body=outlierRows.slice(0,300).map(o=>{
+    const grpVal = state.groupBy==='geo' ? o.row.geo : o.row.cs;
+    const tcolor = o.type==="Invalid" ? '#b26a00' : '#c0392b';
+    return `<tr>
+      <td style="text-align:left;color:${tcolor};font-weight:700">${o.type}</td>
+      <td style="text-align:left">${grpVal||'–'}</td>
+      <td style="text-align:left">${o.row.cs||'–'}</td>
+      <td style="text-align:left">${o.row.geo||'–'}</td>
+      <td style="text-align:left">${o.row.dateFull||o.row.dateStr||'–'}</td>
+      <td class="flag">${fmt(o.value,d)}</td>
+      <td style="text-align:left;color:#5b6b82">${o.detail||''}</td>
+    </tr>`;
+  }).join('');
+  const more = outlierRows.length>300 ? `<tr><td colspan="7" style="text-align:center;color:#7a8aa0">… ${outlierRows.length-300} more</td></tr>` : '';
+  document.getElementById('outlierTable').innerHTML=header+`<tbody>${body}${more}</tbody>`;
+}
+
+// wrap build to refresh the fleet mode cache
+const _build=build;
+build=function(){
+  const cfg=METRICS[state.metric];
+  const rows=currentRows();
+  fleetVals_cache = rows.filter(r=> state.excludeInvalid ? cfg.valid(r) : true).map(r=>cfg.get(r));
+  _build();
+};
+
+/* ===================== Wiring ===================== */
+function seg(id, key){
+  document.querySelectorAll(`#${id} button`).forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll(`#${id} button`).forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      state[key]=b.dataset.v;
+      if(key==='groupBy'){ state.sortKey='n'; state.sortDir=-1; }
+      build();
+    };
+  });
+}
+seg('metricSeg','metric');
+seg('groupSeg','groupBy');
+document.getElementById('excludeInvalid').onchange=e=>{ state.excludeInvalid=e.target.checked; build(); };
+document.getElementById('minN').onchange=e=>{ state.minN=Math.max(1, parseInt(e.target.value)||1); build(); };
+document.getElementById('startDate').onchange=build;
+document.getElementById('endDate').onchange=build;
+document.getElementById('resetBtn').onclick=()=>{
+  document.getElementById('startDate').value=DATE_MIN;
+  document.getElementById('endDate').value=DATE_MAX;
+  document.getElementById('minN').value=5; state.minN=5;
+  build();
+};
+
+/* ===================== Load ===================== */
+fetch('data/master_results.csv')
+  .then(r=>r.text())
+  .then(csv=>{
+    const raw=parseCSV(csv);
+    const dates=[];
+    raw.forEach(row=>{
+      const s=parseSpeedRow(row);
+      if(!s) return;
+      let geo=canonicalGeoname(row.geoname||row.Geoname||"Unknown");
+      if(geo==="S7000"||geo==="CGR") return;
+      const pd=(row.PosnDate||row.posndate||"").toString();
+      const dm=pd.match(/(\d{4}-\d{2}-\d{2})/);
+      const dateStr=dm?dm[1]:"";
+      ALL.push({cs:(row.callsign||row.Callsign||"Unknown").toString().trim(),
+                geo, tx:s.tx, rx:s.rx, ping:s.ping, dateStr, dateFull:pd.slice(0,19)});
+      if(dateStr) dates.push(dateStr);
+    });
+    if(dates.length){ DATE_MIN=dates.reduce((a,b)=>a<b?a:b); DATE_MAX=dates.reduce((a,b)=>a>b?a:b); }
+    document.getElementById('startDate').value=DATE_MIN;
+    document.getElementById('endDate').value=DATE_MAX;
+    build();
+  })
+  .catch(err=>{
+    document.getElementById('emptyMsg').style.display='block';
+    document.getElementById('emptyMsg').textContent='Could not load data/master_results.csv — '+err;
+  });
+</script>
+</body>
+</html>
